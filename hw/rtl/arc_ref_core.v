@@ -348,17 +348,40 @@ module arc_ref_core #(
         end
     endtask
 
-    // Set HP after a loss and apply the consequences of a defeat.
+    // HP losses go through one shared unit: set_hp records the request and
+    // apply_hp carries it out on the next cycle, which nothing else uses (the
+    // main sequencer waits), so later jobs always see the new HP. This keeps a
+    // single copy of the damage/defeat logic instead of one per caller.
+    reg        hq_valid;
+    reg [2:0]  hq_r;
+    reg [15:0] hq_nh;
+    reg        hq_attack;
+    reg        hq_eject;
+
     task set_hp;
         input [2:0]  r;
         input [15:0] nh;
         input        attack;   // counts as attack damage for the other team
-        input        eject;    // red card: no respawn (red[r] is set this same cycle)
-        reg          t;
+        input        eject;    // red card: no respawn
         begin
-            t = team_of(r);
+            hq_valid  <= 1'b1;
+            hq_r      <= r;
+            hq_nh     <= nh;
+            hq_attack <= attack;
+            hq_eject  <= eject;
+        end
+    endtask
+
+    task apply_hp;
+        reg [2:0]  r;
+        reg [15:0] nh;
+        reg        t;
+        begin
+            r  = hq_r;
+            nh = hq_nh;
+            t  = team_of(r);
             hp[r] <= nh;
-            if (attack && nh < hp[r]) dmg[~t] <= dmg[~t] + (hp[r] - nh);
+            if (hq_attack && nh < hp[r]) dmg[~t] <= dmg[~t] + (hp[r] - nh);
             if (in_combat && first_dmg == 2'd0 && !mode3) first_dmg <= t ? 2'd2 : 2'd1;
             if (stage == ST_COMBAT && nh == 16'd0 && hp[r] != 16'd0) begin
                 if (!mode3) begin
@@ -369,8 +392,8 @@ module arc_ref_core #(
                     if (heat_lk[r] == 2'd1) heat_lk[r] <= 2'd0;
                     invinc[r] <= 16'd0;
                     weak[r]   <= 1'b0;
-                    if (!red[r] && !eject) resp_t[r] <= {defeats[r] + 8'd1, 5'd0} + {defeats[r] + 8'd1, 4'd0}
-                                              + {defeats[r] + 8'd1, 1'b0};   // 50 x n ticks
+                    if (!red[r] && !hq_eject) resp_t[r] <= {defeats[r] + 8'd1, 5'd0} + {defeats[r] + 8'd1, 4'd0}
+                                                           + {defeats[r] + 8'd1, 1'b0};   // 50 x n ticks
                     defeats[r] <= defeats[r] + 8'd1;
                     lose_vp(t, 16'd20);
                 end
@@ -436,32 +459,31 @@ module arc_ref_core #(
         end
     endtask
 
-    // 1v1 winning criteria (4.4) on slots 1 and 4; 3v3 (3.3.5).
-    function [9:0] judge;
-        input dummy;
-        reg [17:0] th0, th1;
-        begin
-            if (mode3) begin
-                th0 = (fielded[0] ? hp[0] : 16'd0) + (fielded[1] ? hp[1] : 16'd0) + (fielded[2] ? hp[2] : 16'd0);
-                th1 = (fielded[3] ? hp[3] : 16'd0) + (fielded[4] ? hp[4] : 16'd0) + (fielded[5] ? hp[5] : 16'd0);
-                if (vp[0] != vp[1])        judge = {(vp[0] > vp[1]) ? 2'd1 : 2'd2, WR_VP};
-                else if (dmg[0] != dmg[1]) judge = {(dmg[0] > dmg[1]) ? 2'd1 : 2'd2, WR_DAMAGE};
-                else if (th0 != th1)       judge = {(th0 > th1) ? 2'd1 : 2'd2, WR_TOTAL_HP};
-                else                       judge = {2'd0, WR_TIE};
-            end else begin
-                if (hp[1] != hp[4])
-                    judge = {(hp[1] > hp[4]) ? 2'd1 : 2'd2, WR_HP};
-                else if (hp[1] != maxhp[1] && first_dmg != 2'd0)
-                    judge = {(first_dmg == 2'd1) ? 2'd2 : 2'd1, WR_FIRST_DMG};
-                else if (shots[1] != shots[4])
-                    judge = {(shots[1] > shots[4]) ? 2'd1 : 2'd2, WR_SHOTS};
-                else if (first_shot != 2'd0)
-                    judge = {first_shot, WR_FIRST_SHOT};
-                else
-                    judge = {2'd0, WR_TIE};
-            end
+    // Winner and reason if the round ended now: 1v1 criteria (4.4) on slots
+    // 1 and 4, 3v3 criteria (3.3.5). One copy, used wherever a round ends.
+    wire [15:0] j_hp1 = hp_flat[31:16], j_hp4 = hp_flat[79:64];
+    wire [15:0] j_vp0 = vp_flat[15:0],   j_vp1 = vp_flat[31:16];
+    wire [15:0] j_dm0 = dmg_flat[15:0],  j_dm1 = dmg_flat[31:16];
+    wire [17:0] th0 = (rflags2_flat[0]  ? hp_flat[15:0]  : 16'd0) + (rflags2_flat[8]  ? hp_flat[31:16] : 16'd0)
+                    + (rflags2_flat[16] ? hp_flat[47:32] : 16'd0);
+    wire [17:0] th1 = (rflags2_flat[24] ? hp_flat[63:48] : 16'd0) + (rflags2_flat[32] ? hp_flat[79:64] : 16'd0)
+                    + (rflags2_flat[40] ? hp_flat[95:80] : 16'd0);
+    reg [1:0]  jw;
+    reg [7:0]  jr;
+    always @(*) begin
+        if (mode3) begin
+            if (j_vp0 != j_vp1)      begin jw = (j_vp0 > j_vp1) ? 2'd1 : 2'd2; jr = WR_VP; end
+            else if (j_dm0 != j_dm1) begin jw = (j_dm0 > j_dm1) ? 2'd1 : 2'd2; jr = WR_DAMAGE; end
+            else if (th0 != th1)     begin jw = (th0 > th1) ? 2'd1 : 2'd2;     jr = WR_TOTAL_HP; end
+            else                     begin jw = 2'd0;                          jr = WR_TIE; end
+        end else begin
+            if (j_hp1 != j_hp4)                                      begin jw = (j_hp1 > j_hp4) ? 2'd1 : 2'd2; jr = WR_HP; end
+            else if (j_hp1 != maxhp_flat[31:16] && first_dmg != 2'd0) begin jw = (first_dmg == 2'd1) ? 2'd2 : 2'd1; jr = WR_FIRST_DMG; end
+            else if (shots_flat[31:16] != shots_flat[79:64])          begin jw = (shots_flat[31:16] > shots_flat[79:64]) ? 2'd1 : 2'd2; jr = WR_SHOTS; end
+            else if (first_shot != 2'd0)                              begin jw = first_shot; jr = WR_FIRST_SHOT; end
+            else                                                      begin jw = 2'd0; jr = WR_TIE; end
         end
-    endfunction
+    end
 
     // Armor hit on slot r: kind 0 = 17 mm, 1 = collision, 2 = 42 mm.
     task hit;
@@ -702,7 +724,7 @@ module arc_ref_core #(
                         paused <= 1'b0; stage_valid <= 1'b1;
                     end
                     8'd5: if (stage >= ST_PREP && stage <= ST_COMBAT)
-                        finish(judge(1'b0) >> 8, judge(1'b0));
+                        finish(jw, jr);
                     8'd6: begin
                         stage <= ST_IDLE; remain <= 16'd0; paused <= 1'b0;
                         reset_robots();
@@ -864,6 +886,7 @@ module arc_ref_core #(
         warn_valid   <= 1'b0;
         result_valid <= 1'b0;
         stage_valid  <= 1'b0;
+        hq_valid     <= 1'b0;
 
         if (rst) begin
             tdiv <= 32'd0; t5 <= 3'd0; t10 <= 4'd0; sub <= 4'd0; step <= 5'd0;
@@ -919,8 +942,11 @@ module arc_ref_core #(
                 tdiv <= tdiv + 32'd1;
             end
 
-            // One job per cycle, at most two event pulses per cycle.
-            if (step != 5'd0) begin
+            // One job per cycle, at most two event pulses per cycle. A pending
+            // HP change takes the cycle first.
+            if (hq_valid) begin
+                apply_hp();
+            end else if (step != 5'd0) begin
                 if (step == 5'd1) begin
                     if (!paused && stage >= ST_PREP && stage <= ST_COMBAT) begin
                         if (sub == 4'd9) begin
@@ -946,7 +972,7 @@ module arc_ref_core #(
                                         if (mode3) give_coins(16'd200);
                                     end
                                     default:
-                                        finish(judge(1'b0) >> 8, judge(1'b0));
+                                        finish(jw, jr);
                                 endcase
                             end
                         end else begin

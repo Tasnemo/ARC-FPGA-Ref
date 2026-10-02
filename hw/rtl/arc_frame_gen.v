@@ -18,8 +18,11 @@
 //   0xF101 server state     10 Hz (all six slots)
 //   0xF102 event            on every event
 //
-// The payload of each frame is captured into a register when the frame
-// starts, so multi-byte fields never tear.
+// Real-frame payloads (16 bytes or less) are captured into a register when
+// the frame starts, so their multi-byte fields never tear. The 212-byte 0xF101
+// is read straight from the live state byte by byte instead: copying it would
+// cost thousands of LUTs, and a torn field there only affects one console
+// refresh.
 module arc_frame_gen (
     input  wire         clk,
     input  wire         rst,
@@ -87,7 +90,7 @@ module arc_frame_gen (
     `include "arc_crc.vh"
 
     localparam integer SRV_LEN = 212;
-    localparam integer PLW = SRV_LEN * 8;   // largest payload (0xF101)
+    localparam integer PLW = 16 * 8;        // largest captured payload
 
     // Pending-frame slots, highest priority first
     localparam integer P_HURT = 0, P_SHOT = 1, P_WARN = 2, P_RESULT = 3,
@@ -178,6 +181,7 @@ module arc_frame_gen (
     wire [8*SRV_LEN-1:0] pl_F101 = {cfg_setup_time, cfg_combat_time, rx_err, rx_ok,
                                     srv_robots, srv_teams, srv_head};
     wire [8*5-1:0]  pl_F102 = evq[ev_rp];
+    wire [7:0]      srv_byte = pl_F101[8*pidx +: 8];
 
     // ----------------------------------------------------------- scheduling
     reg [NP-1:0] pend;
@@ -202,6 +206,8 @@ module arc_frame_gen (
     reg [7:0]     plen;
     reg [15:0]    cmd;
     reg [PLW-1:0] pl;
+    reg           srv;      // sending 0xF101 (streamed, not captured)
+    reg [7:0]     pidx;     // payload byte index
     reg [7:0]     crc8;
     reg [15:0]    crc16;
     reg [7:0]     seq;
@@ -214,7 +220,7 @@ module arc_frame_gen (
         (b == 8'd4)        ? crc8 :
         (b == 8'd5)        ? cmd[7:0] :
         (b == 8'd6)        ? cmd[15:8] :
-        (b < 8'd7 + plen)  ? pl[7:0] :
+        (b < 8'd7 + plen)  ? (srv ? srv_byte : pl[7:0]) :
         (b == 8'd7 + plen) ? crc16[7:0] : crc16[15:8];
 
     reg [NP-1:0] clr, set;
@@ -238,7 +244,10 @@ module arc_frame_gen (
                 fifo_din <= cur_byte;
                 if (b < 8'd4)        crc8  <= crc8_byte(crc8, cur_byte);
                 if (b < 8'd7 + plen) crc16 <= crc16_byte(crc16, cur_byte);
-                if (b >= 8'd7 && b < 8'd7 + plen) pl <= pl >> 8;
+                if (b >= 8'd7 && b < 8'd7 + plen) begin
+                    pl   <= pl >> 8;
+                    pidx <= pidx + 8'd1;
+                end
                 if (b == 8'd8 + plen) begin
                     busy <= 1'b0;
                     seq  <= seq + 8'd1;
@@ -249,6 +258,8 @@ module arc_frame_gen (
                 b     <= 8'd0;
                 crc8  <= 8'hFF;
                 crc16 <= 16'hFFFF;
+                pidx  <= 8'd0;
+                srv   <= pick[P_SRV];
                 clr   = pick;
                 case (1'b1)
                     pick[P_HURT]:   begin cmd <= 16'h0206; plen <= 8'd1;  pl <= pl_0206; end
@@ -262,7 +273,7 @@ module arc_frame_gen (
                     pick[P_HP]:     begin cmd <= 16'h0003; plen <= 8'd16; pl <= pl_0003; end
                     pick[P_FIELD]:  begin cmd <= 16'h0101; plen <= 8'd4;  pl <= pl_0101; end
                     pick[P_BUFF]:   begin cmd <= 16'h0204; plen <= 8'd8;  pl <= pl_0204; end
-                    default:        begin cmd <= 16'hF101; plen <= SRV_LEN; pl <= pl_F101; end
+                    default:        begin cmd <= 16'hF101; plen <= SRV_LEN; end
                 endcase
             end
 
