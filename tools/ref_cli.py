@@ -4,13 +4,15 @@
     pip install pyserial
     python3 tools/ref_cli.py --port COM5 monitor           # print decoded frames
     python3 tools/ref_cli.py --port /dev/ttyUSB1 start     # send a command, then monitor
-    python3 tools/ref_cli.py --port COM5 hit 0 2           # hit red armor 2
+    python3 tools/ref_cli.py --port COM5 hit 1 2           # hit red infantry armor 2
 
 Commands: monitor, setup, start, pause, resume, end, reset,
           hit <robot> <armor>, shoot <robot> [speed], yellow <robot>,
           red <robot>, kill <robot>, revive <robot>, disconnect <robot>,
-          reconnect <robot>, power <robot> <watts>
-Robots: 0 = red, 1 = blue.
+          reconnect <robot>, power <robot> <watts>, zone <robot> <0|1|2>,
+          exchange <robot> <n>
+Robots are slots: 0 red hero, 1 red infantry, 2 red sentry, 3-5 the same for blue.
+1v1 uses slots 1 and 4.
 """
 import argparse
 import pathlib
@@ -37,6 +39,10 @@ def build(cmd, args):
         return arcref.cmd_penalty(a[0], 3)
     if cmd in ("kill", "revive", "disconnect", "reconnect"):
         return arcref.cmd_life(a[0], ["kill", "revive", "disconnect", "reconnect"].index(cmd))
+    if cmd == "zone":
+        return arcref.cmd_zone(a[0], a[1])
+    if cmd == "exchange":
+        return arcref.cmd_exchange(a[0], a[1])
     if cmd == "power":
         return arcref.cmd_power(a[0], a[1])
     raise SystemExit(f"unknown command {cmd!r}")

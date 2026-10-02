@@ -5,134 +5,178 @@
 //
 // Real referee frames (as the link robot would receive them):
 //   0x0001 game status      1 Hz + on stage change
-//   0x0002 game result      on match end
+//   0x0002 game result      on round end
 //   0x0003 ally robot HP    ~3 Hz
+//   0x0101 field events     1 Hz (resupply zone, capture point)
 //   0x0104 referee warning  on penalty + 1 Hz
 //   0x0201 robot status     10 Hz
 //   0x0202 buffer and heat  10 Hz
+//   0x0204 robot buffs      ~3 Hz (healing, invincibility)
 //   0x0206 hurt data        on armor hit / collision
 //   0x0207 shoot data       on shot
 // Server-side frames for the browser console only:
-//   0xF101 server state     10 Hz
-//   0xF102 event            on every event, either robot
+//   0xF101 server state     10 Hz (all six slots)
+//   0xF102 event            on every event
 //
 // The payload of each frame is captured into a register when the frame
 // starts, so multi-byte fields never tear.
 module arc_frame_gen (
-    input  wire        clk,
-    input  wire        rst,
-    input  wire        tick_20ms,
+    input  wire         clk,
+    input  wire         rst,
+    input  wire         tick_20ms,
 
-    input  wire [2:0]  stage,
-    input  wire        paused,
-    input  wire [15:0] remain,
-    input  wire [1:0]  winner,
-    input  wire [7:0]  win_reason,
-    input  wire [1:0]  first_dmg,
-    input  wire [1:0]  first_shot,
-    input  wire [3:0]  game_type,
-    input  wire        link_robot,
-    input  wire [31:0] unix_time,
-    input  wire [15:0] cfg_combat_time,
-    input  wire [15:0] cfg_max_hp,
-    input  wire [15:0] cfg_heat_limit,
-    input  wire [15:0] cfg_cooling,
-    input  wire [15:0] cfg_power_limit,
-    input  wire [15:0] cfg_hit_dmg,
-    input  wire [15:0] cfg_setup_time,
-    input  wire [15:0] cfg_speed_limit,
-    input  wire [31:0] hp_flat,
-    input  wire [31:0] heat_flat,
-    input  wire [31:0] buffer_flat,
-    input  wire [31:0] power_flat,
-    input  wire [31:0] allowance_flat,
-    input  wire [31:0] shots_flat,
-    input  wire [15:0] yellow_flat,
-    input  wire [15:0] rflags_flat,
-    input  wire [15:0] lock_s_flat,
-    input  wire [15:0] chassis_ds_flat,
-    input  wire [15:0] rx_ok,
-    input  wire [15:0] rx_err,
+    input  wire [2:0]   stage,
+    input  wire         paused,
+    input  wire [15:0]  remain,
+    input  wire [1:0]   winner,
+    input  wire [7:0]   win_reason,
+    input  wire [1:0]   first_dmg,
+    input  wire [1:0]   first_shot,
+    input  wire [1:0]   cap_holder,
+    input  wire [3:0]   game_type,
+    input  wire [2:0]   link_robot,
+    input  wire [31:0]  unix_time,
+    input  wire [15:0]  cfg_combat_time,
+    input  wire [15:0]  cfg_setup_time,
+    input  wire [95:0]  hp_flat,
+    input  wire [95:0]  maxhp_flat,
+    input  wire [95:0]  heat10_flat,
+    input  wire [95:0]  heatlim_flat,
+    input  wire [95:0]  buf10_flat,
+    input  wire [95:0]  power_flat,
+    input  wire [95:0]  plim_flat,
+    input  wire [95:0]  ammo_flat,
+    input  wire [95:0]  shots_flat,
+    input  wire [95:0]  cool_flat,
+    input  wire [95:0]  spdlim_flat,
+    input  wire [47:0]  yellow_flat,
+    input  wire [47:0]  rflags_flat,
+    input  wire [47:0]  rflags2_flat,
+    input  wire [47:0]  choff_flat,
+    input  wire [95:0]  spdlk_flat,
+    input  wire [95:0]  timer_flat,
+    input  wire [31:0]  vp_flat,
+    input  wire [31:0]  coins_flat,
+    input  wire [31:0]  dmg_flat,
+    input  wire [1:0]   hero_live_flat,
+    input  wire [1:0]   in_resupply_flat,
+    input  wire [15:0]  rx_ok,
+    input  wire [15:0]  rx_err,
 
-    input  wire [1:0]  ev_valid,
-    input  wire [1:0]  ev_robot,
-    input  wire [15:0] ev_kind,
-    input  wire [15:0] ev_detail,
-    input  wire [31:0] ev_hp,
-    input  wire        hurt_valid,
-    input  wire [7:0]  hurt_byte,
-    input  wire        shot_valid,
-    input  wire [7:0]  shot_freq,
-    input  wire [31:0] shot_speed,
-    input  wire        warn_valid,
-    input  wire [7:0]  warn_level,
-    input  wire [7:0]  warn_id,
-    input  wire [7:0]  warn_count,
-    input  wire        result_valid,
-    input  wire        stage_valid,
+    input  wire [1:0]   ev_valid,
+    input  wire [5:0]   ev_robot,
+    input  wire [15:0]  ev_kind,
+    input  wire [15:0]  ev_detail,
+    input  wire [31:0]  ev_hp,
+    input  wire         hurt_valid,
+    input  wire [7:0]   hurt_byte,
+    input  wire         shot_valid,
+    input  wire [7:0]   shot_freq,
+    input  wire [31:0]  shot_speed,
+    input  wire         warn_valid,
+    input  wire [7:0]   warn_level,
+    input  wire [7:0]   warn_id,
+    input  wire [7:0]   warn_count,
+    input  wire         result_valid,
+    input  wire         stage_valid,
 
-    output reg         fifo_wr,
-    output reg  [7:0]  fifo_din,
-    input  wire [10:0] fifo_free
+    output reg          fifo_wr,
+    output reg  [7:0]   fifo_din,
+    input  wire [10:0]  fifo_free
 );
     `include "arc_crc.vh"
 
-    localparam integer PLW = 66 * 8;   // largest payload (0xF101)
+    localparam integer SRV_LEN = 212;
+    localparam integer PLW = SRV_LEN * 8;   // largest payload (0xF101)
 
     // Pending-frame slots, highest priority first
     localparam integer P_HURT = 0, P_SHOT = 1, P_WARN = 2, P_RESULT = 3,
                        P_STAT = 4, P_EV = 5, P_RS = 6, P_PH = 7, P_HP = 8,
-                       P_SRV = 9, NP = 10;
+                       P_FIELD = 9, P_BUFF = 10, P_SRV = 11, NP = 12;
 
-    // ---------------------------------------------------------------- state
-    wire        lr  = link_robot;
-    wire [15:0] hp0 = hp_flat[15:0], hp1 = hp_flat[31:16];
-    wire [7:0]  rf0 = rflags_flat[7:0], rf1 = rflags_flat[15:8];
-    wire [7:0]  l_flags = lr ? rf1 : rf0;
+    // x / 10 for x < 65536 (exact)
+    function [15:0] div10;
+        input [15:0] x;
+        reg [31:0] p;
+        begin
+            p = x * 32'd52429;
+            div10 = {3'b000, p[31:19]};
+        end
+    endfunction
 
-    // Per-robot block of 0xF101 (22 bytes). Built from plain wires: simulators
-    // do not re-evaluate continuous assigns through functions that read
-    // module signals.
-    wire [8*22-1:0] blk0 = {chassis_ds_flat[7:0], lock_s_flat[7:0], rflags_flat[7:0],
-                            yellow_flat[7:0], shots_flat[15:0], allowance_flat[15:0],
-                            cfg_power_limit, power_flat[15:0], buffer_flat[15:0],
-                            cfg_heat_limit, heat_flat[15:0], cfg_max_hp, hp_flat[15:0]};
-    wire [8*22-1:0] blk1 = {chassis_ds_flat[15:8], lock_s_flat[15:8], rflags_flat[15:8],
-                            yellow_flat[15:8], shots_flat[31:16], allowance_flat[31:16],
-                            cfg_power_limit, power_flat[31:16], buffer_flat[31:16],
-                            cfg_heat_limit, heat_flat[31:16], cfg_max_hp, hp_flat[31:16]};
-    wire [15:0] l_hp     = lr ? hp_flat[31:16]     : hp_flat[15:0];
-    wire [15:0] l_heat   = lr ? heat_flat[31:16]   : heat_flat[15:0];
-    wire [15:0] l_buffer = lr ? buffer_flat[31:16] : buffer_flat[15:0];
+    // ------------------------------------------------- link robot and team
+    wire [2:0]  lr  = link_robot;
+    wire        lt  = (lr >= 3'd3);
+    wire [6:0]  lb  = {lr, 4'd0};             // 16 x slot, bit offset
+    wire [5:0]  lb8 = {lr, 3'd0};
+    wire [15:0] l_hp      = hp_flat[lb +: 16];
+    wire [15:0] l_maxhp   = maxhp_flat[lb +: 16];
+    wire [15:0] l_heat    = div10(heat10_flat[lb +: 16]);
+    wire [15:0] l_heatlim = heatlim_flat[lb +: 16];
+    wire [15:0] l_buffer  = div10(buf10_flat[lb +: 16]);
+    wire [15:0] l_plim    = plim_flat[lb +: 16];
+    wire [15:0] l_cool    = cool_flat[lb +: 16];
+    wire [7:0]  l_flags   = rflags_flat[lb8 +: 8];
+    wire [7:0]  l_flags2  = rflags2_flat[lb8 +: 8];
+    wire        l_cal42   = l_flags2[1];
+    wire [7:0]  l_id      = (lt ? 8'd100 : 8'd0) +
+                            ((lr == 3'd0 || lr == 3'd3) ? 8'd1 : (lr == 3'd1 || lr == 3'd4) ? 8'd3 : 8'd7);
+    wire [15:0] a_hp1 = lt ? hp_flat[63:48] : hp_flat[15:0];
+    wire [15:0] a_hp3 = lt ? hp_flat[79:64] : hp_flat[31:16];
+    wire [15:0] a_hp7 = lt ? hp_flat[95:80] : hp_flat[47:32];
+    wire        mode3 = (game_type == 4'd4);
+    wire [1:0]  cap_view = (cap_holder == 2'd3) ? 2'd3 :
+                           (cap_holder == 2'd0) ? 2'd0 :
+                           (cap_holder == {lt, ~lt}) ? 2'd1 : 2'd2;
 
     // latched event data
-    reg [7:0]  hurt_l, warn_lvl_l, warn_id_l, warn_cnt_l, shot_freq_l;
+    reg [7:0]  hurt_l, warn_lvl_l, warn_id_l, warn_cnt_l, shot_freq_l, shot_type_l;
     reg [31:0] shot_speed_l;
 
-    // event FIFO (8 deep): {hp, detail, kind, robot}
-    reg [39:0] evq [0:7];
-    reg [2:0]  ev_wp, ev_rp;
-    reg [3:0]  ev_n;
-    wire       ev_any = ev_n != 4'd0;
+    // event FIFO (16 deep): {value, detail, kind, robot}
+    reg [39:0] evq [0:15];
+    reg [3:0]  ev_wp, ev_rp;
+    reg [4:0]  ev_n;
+    wire       ev_any = ev_n != 5'd0;
 
     // ------------------------------------------------------------- payloads
     wire [8*11-1:0] pl_0001 = {32'd0, unix_time, remain, {1'b0, stage}, game_type};
     wire [8*1-1:0]  pl_0002 = {6'd0, winner};
     // ally_1, ally_2, ally_3, ally_4, reserved, ally_7, outpost, base
-    wire [8*16-1:0] pl_0003 = {80'd0, l_hp, 32'd0};
+    wire [8*16-1:0] pl_0003 = {32'd0, a_hp7, 32'd0, a_hp3, 16'd0, a_hp1};
+    wire [8*4-1:0]  pl_0101 = mode3 ? {7'd0, cap_view, 20'd0, in_resupply_flat[lt], 2'd0} : 32'd0;
     wire [8*3-1:0]  pl_0104 = {warn_cnt_l, warn_id_l, warn_lvl_l};
     wire [8*13-1:0] pl_0201 = {{5'd0, l_flags[2], l_flags[3], l_flags[4]},
-                               cfg_power_limit, cfg_heat_limit, cfg_cooling,
-                               cfg_max_hp, l_hp, 8'd1, (lr ? 8'd103 : 8'd3)};
+                               l_plim, l_heatlim, l_cool, l_maxhp, l_hp, 8'd1, l_id};
     // reserved(2), reserved(2), reserved(4), buffer, 17 mm heat, 42 mm heat
-    wire [8*14-1:0] pl_0202 = {16'd0, l_heat, l_buffer, 64'd0};
+    wire [8*14-1:0] pl_0202 = {l_cal42 ? l_heat : 16'd0, l_cal42 ? 16'd0 : l_heat, l_buffer, 64'd0};
+    // recovery %, cooling buff, defence %, vulnerability %, attack %, energy
+    wire        l_heal  = mode3 && l_flags[0] && l_flags2[6:5] == 2'd1;
+    wire [8*8-1:0]  pl_0204 = {8'h80, 16'd0, 8'd0, (l_flags2[2] ? 8'd100 : 8'd0), 16'd0,
+                               (l_heal ? 8'd25 : 8'd0)};
     wire [8*1-1:0]  pl_0206 = hurt_l;
-    wire [8*7-1:0]  pl_0207 = {shot_speed_l, shot_freq_l, 8'd1, 8'd1};
-    wire [8*66-1:0] pl_F101 = {cfg_speed_limit, cfg_setup_time, cfg_hit_dmg, cfg_cooling,
-                               cfg_combat_time, rx_err, rx_ok,
-                               blk1, blk0,
-                               {4'd0, game_type}, {7'd0, lr}, win_reason, {6'd0, winner},
-                               remain, {3'd0, first_shot, first_dmg, paused}, {5'd0, stage}};
+    wire [8*7-1:0]  pl_0207 = {shot_speed_l, shot_freq_l,
+                               (shot_type_l == 8'd2) ? 8'd3 : 8'd1, shot_type_l};
+
+    // 0xF101: header, two team blocks, six robot blocks, counters
+    wire [8*8-1:0] srv_head = {{4'd0, game_type}, {5'd0, lr}, win_reason, {6'd0, winner}, remain,
+                               {mode3, cap_holder, first_shot, first_dmg, paused}, {5'd0, stage}};
+    wire [8*16-1:0] srv_teams = {8'd0, {7'd0, hero_live_flat[1]}, dmg_flat[31:16], coins_flat[31:16], vp_flat[31:16],
+                                 8'd0, {7'd0, hero_live_flat[0]}, dmg_flat[15:0],  coins_flat[15:0],  vp_flat[15:0]};
+    wire [8*30*6-1:0] srv_robots;
+    genvar g;
+    generate
+        for (g = 0; g < 6; g = g + 1) begin : blk
+            assign srv_robots[240*g +: 240] = {
+                timer_flat[16*g +: 16], spdlk_flat[16*g +: 16],
+                choff_flat[8*g +: 8], rflags2_flat[8*g +: 8], rflags_flat[8*g +: 8], yellow_flat[8*g +: 8],
+                spdlim_flat[16*g +: 16], cool_flat[16*g +: 16], shots_flat[16*g +: 16], ammo_flat[16*g +: 16],
+                plim_flat[16*g +: 16], power_flat[16*g +: 16], buf10_flat[16*g +: 16],
+                heatlim_flat[16*g +: 16], heat10_flat[16*g +: 16], maxhp_flat[16*g +: 16], hp_flat[16*g +: 16]};
+        end
+    endgenerate
+    wire [8*SRV_LEN-1:0] pl_F101 = {cfg_setup_time, cfg_combat_time, rx_err, rx_ok,
+                                    srv_robots, srv_teams, srv_head};
     wire [8*5-1:0]  pl_F102 = evq[ev_rp];
 
     // ----------------------------------------------------------- scheduling
@@ -174,8 +218,9 @@ module arc_frame_gen (
         (b == 8'd7 + plen) ? crc16[7:0] : crc16[15:8];
 
     reg [NP-1:0] clr, set;
-    reg [3:0]    n_in;
-    reg [2:0]    wp;
+    reg [4:0]    n_in;
+    reg [3:0]    wp;
+    wire [4:0]   room = 5'd16 + (clr[P_EV] ? 5'd1 : 5'd0);
 
     always @(posedge clk) begin
         fifo_wr <= 1'b0;
@@ -184,8 +229,8 @@ module arc_frame_gen (
             pend <= {NP{1'b0}};
             c50 <= 6'd0; c5 <= 3'd0; c17 <= 5'd0;
             busy <= 1'b0; seq <= 8'd0;
-            ev_wp <= 3'd0; ev_rp <= 3'd0; ev_n <= 4'd0;
-            hurt_l <= 8'd0; shot_freq_l <= 8'd0; shot_speed_l <= 32'd0;
+            ev_wp <= 4'd0; ev_rp <= 4'd0; ev_n <= 5'd0;
+            hurt_l <= 8'd0; shot_freq_l <= 8'd0; shot_speed_l <= 32'd0; shot_type_l <= 8'd1;
             warn_lvl_l <= 8'd0; warn_id_l <= 8'd0; warn_cnt_l <= 8'd0;
         end else begin
             if (busy) begin
@@ -199,7 +244,7 @@ module arc_frame_gen (
                     seq  <= seq + 8'd1;
                 end
                 b <= b + 8'd1;
-            end else if (pick != {NP{1'b0}} && fifo_free >= 11'd80) begin
+            end else if (pick != {NP{1'b0}} && fifo_free >= SRV_LEN + 12) begin
                 busy  <= 1'b1;
                 b     <= 8'd0;
                 crc8  <= 8'hFF;
@@ -215,30 +260,29 @@ module arc_frame_gen (
                     pick[P_RS]:     begin cmd <= 16'h0201; plen <= 8'd13; pl <= pl_0201; end
                     pick[P_PH]:     begin cmd <= 16'h0202; plen <= 8'd14; pl <= pl_0202; end
                     pick[P_HP]:     begin cmd <= 16'h0003; plen <= 8'd16; pl <= pl_0003; end
-                    default:        begin cmd <= 16'hF101; plen <= 8'd66; pl <= pl_F101; end
+                    pick[P_FIELD]:  begin cmd <= 16'h0101; plen <= 8'd4;  pl <= pl_0101; end
+                    pick[P_BUFF]:   begin cmd <= 16'h0204; plen <= 8'd8;  pl <= pl_0204; end
+                    default:        begin cmd <= 16'hF101; plen <= SRV_LEN; pl <= pl_F101; end
                 endcase
             end
 
             // Event queue: pop one on frame start, push up to two (A then B).
-            // Events that do not fit are dropped (the queue only overflows if
-            // the browser link stalls).
-            if (clr[P_EV]) ev_rp <= ev_rp + 3'd1;
-            n_in = 4'd0;
+            if (clr[P_EV]) ev_rp <= ev_rp + 4'd1;
+            n_in = 5'd0;
             wp = ev_wp;
-            if (ev_valid[0] && ev_n + n_in < 4'd8 + (clr[P_EV] ? 4'd1 : 4'd0)) begin
-                evq[wp] <= {ev_hp[15:0], ev_detail[7:0], ev_kind[7:0], 7'd0, ev_robot[0]};
-                wp = wp + 3'd1;
-                n_in = n_in + 4'd1;
+            if (ev_valid[0] && ev_n + n_in < room) begin
+                evq[wp] <= {ev_hp[15:0], ev_detail[7:0], ev_kind[7:0], 5'd0, ev_robot[2:0]};
+                wp = wp + 4'd1;
+                n_in = n_in + 5'd1;
             end
-            if (ev_valid[1] && ev_n + n_in < 4'd8 + (clr[P_EV] ? 4'd1 : 4'd0)) begin
-                evq[wp] <= {ev_hp[31:16], ev_detail[15:8], ev_kind[15:8], 7'd0, ev_robot[1]};
-                wp = wp + 3'd1;
-                n_in = n_in + 4'd1;
+            if (ev_valid[1] && ev_n + n_in < room) begin
+                evq[wp] <= {ev_hp[31:16], ev_detail[15:8], ev_kind[15:8], 5'd0, ev_robot[5:3]};
+                wp = wp + 4'd1;
+                n_in = n_in + 5'd1;
             end
             ev_wp <= wp;
-            ev_n  <= ev_n + n_in - (clr[P_EV] ? 4'd1 : 4'd0);
+            ev_n  <= ev_n + n_in - (clr[P_EV] ? 5'd1 : 5'd0);
 
-            // periodic requests
             if (tick_20ms) begin
                 c50 <= (c50 == 6'd49) ? 6'd0 : c50 + 6'd1;
                 c5  <= (c5 == 3'd4)   ? 3'd0 : c5 + 3'd1;
@@ -255,11 +299,16 @@ module arc_frame_gen (
             set[P_RS]     = tick_20ms && c5 == 3'd0;
             set[P_PH]     = tick_20ms && c5 == 3'd1;
             set[P_HP]     = tick_20ms && c17 == 5'd0;
+            set[P_FIELD]  = tick_20ms && c50 == 6'd10;
+            set[P_BUFF]   = tick_20ms && c17 == 5'd8;
             set[P_SRV]    = tick_20ms && c5 == 3'd3;
             pend <= (pend & ~clr) | set;
 
             if (hurt_valid) hurt_l <= hurt_byte;
-            if (shot_valid) begin shot_freq_l <= shot_freq; shot_speed_l <= shot_speed; end
+            if (shot_valid) begin
+                shot_freq_l <= shot_freq; shot_speed_l <= shot_speed;
+                shot_type_l <= l_cal42 ? 8'd2 : 8'd1;
+            end
             if (warn_valid) begin
                 warn_lvl_l <= warn_level; warn_id_l <= warn_id; warn_cnt_l <= warn_count;
             end

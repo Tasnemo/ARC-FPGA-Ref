@@ -65,17 +65,24 @@ class Decoder:
 
 
 STAGES = ["not started", "setup", "init (15 s)", "countdown", "battle", "settlement"]
+SLOTS = ["red hero", "red infantry", "red sentry", "blue hero", "blue infantry", "blue sentry"]
+ROBOT_IDS = [1, 3, 7, 101, 103, 107]
 EVENTS = {1: "hit", 2: "shot", 3: "locked", 4: "chassis_cut", 5: "yellow", 6: "red",
           7: "forfeit", 8: "kill", 9: "revive", 10: "disconnect", 11: "reconnect",
-          12: "offline_hp", 13: "unlocked", 14: "yellow_both"}
+          12: "offline_hp", 13: "unlocked", 14: "yellow_both", 15: "exchange", 16: "immune",
+          17: "respawn", 18: "capture", 19: "yellow_team"}
 LOCKS = {1: "heat", 2: "heat_round", 3: "speed_15s", 4: "speed_20s", 5: "speed_round", 6: "ammo"}
 WIN_REASONS = {0: "none", 1: "defeat", 2: "more_hp", 3: "first_damage", 4: "more_shots",
-               5: "first_shot", 6: "tie", 7: "forfeit"}
+               5: "first_shot", 6: "tie", 7: "forfeit", 8: "vp_zero", 9: "more_vp",
+               10: "more_damage", 11: "more_total_hp"}
 
-ROBOT_FIELDS = ("hp", "max_hp", "heat", "heat_limit", "buffer", "power", "power_limit",
-                "allowance", "shots", "yellow", "flags", "lock_s", "chassis_ds")
+ROBOT_FIELDS = ("hp", "max_hp", "heat10", "heat_limit", "buffer10", "power", "power_limit",
+                "allowance", "shots", "cooling", "speed_limit", "yellow", "flags", "flags2",
+                "chassis_ticks", "speed_lock_ticks", "timer_ticks")
 FLAG_BITS = ("alive", "red_card", "shooter_on", "chassis_on", "gimbal_on", "disconnected",
              "heat_locked", "speed_locked")
+FLAG2_BITS = ("fielded", "cal42", "invincible", "weakened", "respawning")
+SRV_LEN = 212
 
 
 def decode_payload(cmd, p):
@@ -87,7 +94,10 @@ def decode_payload(cmd, p):
         return {"winner": p[0]}
     if cmd == 0x0003:
         hp = struct.unpack("<8H", p)
-        return {"ally_3": hp[2], "all": hp}
+        return {"ally_1": hp[0], "ally_3": hp[2], "ally_7": hp[5], "all": hp}
+    if cmd == 0x0101:
+        v = struct.unpack("<I", p)[0]
+        return {"resupply": v >> 2 & 1, "center": v >> 23 & 3, "raw": v}
     if cmd == 0x0104:
         return dict(zip(("level", "offender", "count"), p))
     if cmd == 0x0201:
@@ -97,6 +107,9 @@ def decode_payload(cmd, p):
     if cmd == 0x0202:
         f = struct.unpack("<HHIHHH", p)
         return {"buffer_j": f[3], "heat_17": f[4], "heat_42": f[5]}
+    if cmd == 0x0204:
+        f = struct.unpack("<BHBBHB", p)
+        return dict(zip(("recovery", "cooling", "defence", "vulnerability", "attack", "energy"), f))
     if cmd == 0x0206:
         return {"armor": p[0] & 0xF, "reason": p[0] >> 4}
     if cmd == 0x0207:
@@ -104,21 +117,28 @@ def decode_payload(cmd, p):
         return dict(zip(("bullet_type", "shooter", "freq", "speed"), f))
     if cmd == 0xF101:
         stage, flags, remain, winner, reason, link, gtype = struct.unpack_from("<BBHBBBB", p, 0)
+        teams = []
+        for t in range(2):
+            vp, coins, dmg, tf = struct.unpack_from("<3HB", p, 8 + 8 * t)
+            teams.append({"vp": vp, "coins": coins, "damage": dmg, "hero_live": bool(tf & 1)})
         robots = []
-        for r in range(2):
-            d = dict(zip(ROBOT_FIELDS, struct.unpack_from("<9H4B", p, 8 + 22 * r)))
+        for r in range(6):
+            d = dict(zip(ROBOT_FIELDS, struct.unpack_from("<11H4B2H", p, 24 + 30 * r)))
             d.update({n: bool(d["flags"] >> i & 1) for i, n in enumerate(FLAG_BITS)})
+            d.update({n: bool(d["flags2"] >> i & 1) for i, n in enumerate(FLAG2_BITS)})
+            d["zone"] = d["flags2"] >> 5 & 3
+            d["heat"] = d["heat10"] // 10
+            d["buffer"] = d["buffer10"] // 10
             robots.append(d)
-        rx_ok, rx_err, combat, cooling, dmg, setup, speed = struct.unpack_from("<7H", p, 52)
+        rx_ok, rx_err, combat, setup = struct.unpack_from("<4H", p, 204)
         return {"stage": stage, "paused": bool(flags & 1), "first_dmg": flags >> 1 & 3,
-                "first_shot": flags >> 3 & 3, "remain": remain, "winner": winner,
-                "win_reason": WIN_REASONS.get(reason, reason), "link": link,
-                "game_type": gtype, "robots": robots, "rx_ok": rx_ok, "rx_err": rx_err,
-                "combat_time": combat, "cooling": cooling, "hit_dmg": dmg,
-                "setup_time": setup, "speed_limit": speed}
+                "first_shot": flags >> 3 & 3, "capture": flags >> 5 & 3, "mode3": bool(flags & 0x80),
+                "remain": remain, "winner": winner, "win_reason": WIN_REASONS.get(reason, reason),
+                "link": link, "game_type": gtype, "teams": teams, "robots": robots,
+                "rx_ok": rx_ok, "rx_err": rx_err, "combat_time": combat, "setup_time": setup}
     if cmd == 0xF102:
-        robot, kind, detail, hp = struct.unpack("<BBBH", p)
-        return {"robot": robot, "kind": EVENTS.get(kind, kind), "detail": detail, "hp": hp}
+        robot, kind, detail, value = struct.unpack("<BBBH", p)
+        return {"robot": robot, "kind": EVENTS.get(kind, kind), "detail": detail, "hp": value}
     return {"raw": p.hex()}
 
 
@@ -128,15 +148,38 @@ def cmd_game(action):
     return encode(0xF001, bytes([action]))
 
 
-def cmd_config(game_type=5, link=0, combat=120, max_hp=200, heat_limit=80, cooling=12,
-               power_limit=120, hit_dmg=20, setup=120, speed_limit=25, allowance=200):
-    """Defaults are the ARCC 2026 1v1 Infantry."""
-    return encode(0xF002, struct.pack("<BB9H", game_type, link, combat, max_hp, heat_limit,
-                                      cooling, power_limit, hit_dmg, setup, speed_limit,
-                                      allowance))
+def cmd_config(game_type=5, link=1, combat=120, setup=120):
+    """game_type 5 = 1v1, 4 = 3v3; link is the slot (0-5) whose view the real frames give."""
+    return encode(0xF002, struct.pack("<BBHH", game_type, link, combat, setup))
 
 
-def cmd_hit(robot, armor, kind=0):
+# ARCC 2026 robot presets: (fielded/caliber flags, max HP, heat limit, cooling, power, speed, ammo)
+PRESETS = {
+    "1v1_infantry": (1, 200, 80, 12, 120, 25, 200),
+    "hero": (3, 350, 200, 24, 100, 15, 0),
+    "infantry_hp_cooldown": (1, 350, 88, 24, 75, 25, 0),
+    "infantry_power_burst": (1, 300, 230, 14, 90, 25, 0),
+    "sentry": (1, 400, 260, 30, 100, 25, 750),
+    "absent": (0, 200, 80, 12, 120, 25, 0),
+}
+
+
+def cmd_robot(slot, flags, max_hp, heat_limit, cooling, power_limit, speed_limit, allowance):
+    """flags bit0 fielded, bit1 42 mm launcher."""
+    return encode(0xF009, struct.pack("<BB6H", slot, flags, max_hp, heat_limit, cooling,
+                                      power_limit, speed_limit, allowance))
+
+
+def cmd_zone(slot, zone):
+    """zone: 0 none, 1 resupply zone, 2 capture point"""
+    return encode(0xF00A, bytes([slot, zone]))
+
+
+def cmd_exchange(slot, projectiles):
+    return encode(0xF00B, struct.pack("<BH", slot, projectiles))
+
+
+def cmd_hit(robot, armor, kind=0):  # robot = slot 0-5
     """kind: 0 17 mm, 1 collision, 2 42 mm"""
     return encode(0xF003, bytes([robot, armor, kind]))
 

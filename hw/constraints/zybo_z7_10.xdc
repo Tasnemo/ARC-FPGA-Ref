@@ -8,7 +8,8 @@ set_property -dict { PACKAGE_PIN P16 IOSTANDARD LVCMOS33 } [get_ports { btn[1] }
 set_property -dict { PACKAGE_PIN K19 IOSTANDARD LVCMOS33 } [get_ports { btn[2] }]
 set_property -dict { PACKAGE_PIN Y16 IOSTANDARD LVCMOS33 } [get_ports { btn[3] }]
 
-## Switches: SW0 = robot the buttons hit (0 red, 1 blue); SW1..3 spare
+## Switches: SW0 = team the buttons hit (0 red, 1 blue); SW2:1 = robot
+## (00 Infantry, 01 Hero, 10 Sentry); SW3 spare
 set_property -dict { PACKAGE_PIN G15 IOSTANDARD LVCMOS33 } [get_ports { sw[0] }]
 set_property -dict { PACKAGE_PIN P15 IOSTANDARD LVCMOS33 } [get_ports { sw[1] }]
 set_property -dict { PACKAGE_PIN W13 IOSTANDARD LVCMOS33 } [get_ports { sw[2] }]

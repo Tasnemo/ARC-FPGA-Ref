@@ -6,7 +6,7 @@
 module tb_arc_ref;
     `include "arc_crc.vh"
 
-    localparam integer CLK_HZ = 20_000;    // 1 s = 20k cycles
+    localparam integer CLK_HZ = 30_000;    // 1 s = 30k cycles
     localparam integer SEC    = CLK_HZ;
 
     reg clk = 0;
@@ -143,6 +143,7 @@ module tb_arc_ref;
 
     reg [31:0] v;
     integer s;
+    reg [7:0] slot0, slot1, slot2;
     initial begin
         fd = $fopen("out/tx_bytes.hex", "w");
         repeat (20) @(posedge clk);
@@ -155,12 +156,14 @@ module tb_arc_ref;
             $finish;
         end
 
-        // Round 1. TIME; CONFIG: 1v1, link red, 30 s battle, 200 HP, heat 80,
-        // cooling 12/s, 120 W, 20 dmg, 3 s setup, 25 m/s, 10 projectiles.
+        // ============================================================ 1v1
+        // Slots: 1 = red Infantry, 4 = blue Infantry.
+        // CONFIG: 1v1, link slot 1, 30 s battle, 3 s setup. ROBOT: 1v1 Infantry
+        // stats (200 HP, heat 80, cooling 12, 120 W, 25 m/s) with 10 projectiles.
         send_frame(16'hF008, 8'd4, 192'd1700000000, 0);
-        send_frame(16'hF002, 8'd20,
-                   {16'd10, 16'd25, 16'd3, 16'd20, 16'd120, 16'd12, 16'd80,
-                    16'd200, 16'd30, 8'd0, 8'd5}, 0);
+        send_frame(16'hF002, 8'd6, {16'd3, 16'd30, 8'd1, 8'd5}, 0);
+        send_frame(16'hF009, 8'd15, {16'd10, 16'd25, 16'd120, 16'd12, 16'd80, 16'd200, 8'h01, 8'd1}, 0);
+        send_frame(16'hF009, 8'd15, {16'd10, 16'd25, 16'd120, 16'd12, 16'd80, 16'd200, 8'h01, 8'd4}, 0);
         send_frame(16'hF001, 8'd1, 192'd1, 0);            // setup period (3 s)
         run_for(SEC / 2);
         send_frame(16'hF001, 8'd1, 192'd3, 0);            // timeout: pause 1 s
@@ -168,28 +171,72 @@ module tb_arc_ref;
         send_frame(16'hF001, 8'd1, 192'd4, 0);            // resume
         run_for(SEC * 23);                                // 2.5 + 15 + 5 s, into battle
 
-        send_frame(16'hF003, 8'd2, {8'd1, 8'd0}, 0);      // red armor 1: 200 -> 180
+        send_frame(16'hF003, 8'd2, {8'd1, 8'd1}, 0);      // red armor 1: 200 -> 180
         press_button(2);                                  // red armor 2: -> 160
-        send_frame(16'hF003, 8'd3, {8'd1, 8'd0, 8'd1}, 0);// blue collision: 200 -> 198
+        send_frame(16'hF003, 8'd3, {8'd1, 8'd0, 8'd4}, 0);// blue collision: 200 -> 198
         for (s = 0; s < 9; s = s + 1)                     // 9 red shots, 25.0 m/s
-            send_frame(16'hF004, 8'd8, {16'd250, 32'h41C80000, 8'd5, 8'd0}, 0);
+            send_frame(16'hF004, 8'd8, {16'd250, 32'h41C80000, 8'd5, 8'd1}, 0);
         run_for(SEC / 5);                                 // heat 90 > 80: locked
-        send_frame(16'hF004, 8'd8, {16'd250, 32'h41C80000, 8'd5, 8'd0}, 0); // rejected
-        send_frame(16'hF004, 8'd8, {16'd310, 32'h41F80000, 8'd5, 8'd1}, 0); // blue 31 m/s
-        send_frame(16'hF004, 8'd8, {16'd250, 32'h41C80000, 8'd5, 8'd1}, 0); // rejected
-        send_frame(16'hF005, 8'd2, {8'd2, 8'd0}, 0);      // red yellow: -30 -> 130
-        send_frame(16'hF005, 8'd2, {8'd2, 8'd0}, 0);      // again <30 s: -60 -> 70
-        send_frame(16'hF007, 8'd3, {16'd200, 8'd1}, 0);   // blue 200 W > 120 W
-        send_frame(16'hF003, 8'd2, {8'd3, 8'd0}, 1);      // corrupt CRC16, dropped
+        send_frame(16'hF004, 8'd8, {16'd250, 32'h41C80000, 8'd5, 8'd1}, 0); // refused
+        send_frame(16'hF004, 8'd8, {16'd310, 32'h41F80000, 8'd5, 8'd4}, 0); // blue 31 m/s
+        send_frame(16'hF004, 8'd8, {16'd250, 32'h41C80000, 8'd5, 8'd4}, 0); // refused
+        send_frame(16'hF005, 8'd2, {8'd2, 8'd1}, 0);      // red yellow: -30 -> 130
+        send_frame(16'hF005, 8'd2, {8'd2, 8'd1}, 0);      // again <30 s: -60 -> 70
+        send_frame(16'hF007, 8'd3, {16'd200, 8'd4}, 0);   // blue 200 W > 120 W
+        send_frame(16'hF003, 8'd2, {8'd3, 8'd1}, 1);      // corrupt CRC16, dropped
         run_for(SEC * 31);                                // time-out: blue wins on HP
 
-        // Round 2: skip setup, three yellows on blue -> red card -> defeat.
-        send_frame(16'hF001, 8'd1, 192'd6, 0);            // reset
-        send_frame(16'hF001, 8'd1, 192'd2, 0);            // straight to init
+        // 1v1 round 2: skip setup; three yellows on blue -> red card -> defeat.
+        send_frame(16'hF001, 8'd1, 192'd6, 0);
+        send_frame(16'hF001, 8'd1, 192'd2, 0);
         run_for(SEC * 20 + SEC / 2);
         for (s = 0; s < 3; s = s + 1)
-            send_frame(16'hF005, 8'd2, {8'd2, 8'd1}, 0);
+            send_frame(16'hF005, 8'd2, {8'd2, 8'd4}, 0);
         run_for(SEC);
+
+        // ============================================================ 3v3
+        // Slots 0/3 Hero (42 mm, 350 HP, heat 200, cool 24, 100 W, 15 m/s, 0 rounds),
+        // 1/4 Infantry HP+Cooldown (350, 88, 24, 75 W, 25 m/s, 0), 2/5 Sentry
+        // (400, 260, 30, 100 W, 25 m/s, 750). 65 s battle, link = red Infantry.
+        send_frame(16'hF001, 8'd1, 192'd6, 0);
+        send_frame(16'hF002, 8'd6, {16'd3, 16'd65, 8'd1, 8'd4}, 0);
+        for (s = 0; s < 2; s = s + 1) begin
+            slot0 = 3 * s; slot1 = 3 * s + 1; slot2 = 3 * s + 2;
+            send_frame(16'hF009, 8'd15, {16'd0,   16'd15, 16'd100, 16'd24, 16'd200, 16'd350, 8'h03, slot0}, 0);
+            send_frame(16'hF009, 8'd15, {16'd0,   16'd25, 16'd75,  16'd24, 16'd88,  16'd350, 8'h01, slot1}, 0);
+            send_frame(16'hF009, 8'd15, {16'd750, 16'd25, 16'd100, 16'd30, 16'd260, 16'd400, 8'h01, slot2}, 0);
+        end
+        send_frame(16'hF001, 8'd1, 192'd2, 0);            // straight to init
+        run_for(SEC * 20 + SEC / 2);
+
+        send_frame(16'hF00A, 8'd2, {8'd1, 8'd1}, 0);      // red Infantry in resupply zone
+        send_frame(16'hF00B, 8'd3, {16'd100, 8'd1}, 0);   // buys 100 x 17 mm: 200 -> 100 coins
+        send_frame(16'hF00B, 8'd3, {16'd5, 8'd0}, 0);     // Hero not in zone: refused
+        send_frame(16'hF00A, 8'd2, {8'd1, 8'd0}, 0);
+        send_frame(16'hF00B, 8'd3, {16'd5, 8'd0}, 0);     // 5 x 42 mm: -> 50 coins
+        send_frame(16'hF003, 8'd3, {8'd2, 8'd0, 8'd4}, 0);// 42 mm on blue Infantry: immune
+        send_frame(16'hF004, 8'd8, {16'd140, 32'h41600000, 8'd1, 8'd0}, 0); // Hero fires 14 m/s
+        send_frame(16'hF003, 8'd3, {8'd2, 8'd1, 8'd4}, 0);// now counts: 350 -> 150
+        send_frame(16'hF00A, 8'd2, {8'd2, 8'd5}, 0);      // blue Sentry takes the capture point
+        for (s = 0; s < 8; s = s + 1)                     // red Sentry: 400 -> 240
+            send_frame(16'hF003, 8'd3, {8'd0, 8'd2, 8'd2}, 0);
+        send_frame(16'hF00A, 8'd2, {8'd0, 8'd1}, 0);      // red Infantry leaves the zone
+        for (s = 0; s < 18; s = s + 1)                    // red Infantry defeated
+            send_frame(16'hF003, 8'd3, {8'd0, 8'd0, 8'd1}, 0);
+        run_for(SEC * 5 + SEC / 2);                       // respawns: 70 HP, weak, invincible
+        send_frame(16'hF004, 8'd8, {16'd200, 32'h41A00000, 8'd5, 8'd1}, 0); // refused (weak)
+        send_frame(16'hF003, 8'd3, {8'd0, 8'd0, 8'd1}, 0);// ignored (invincible)
+        send_frame(16'hF00A, 8'd2, {8'd1, 8'd1}, 0);      // back to resupply: heals 25 %/s
+        run_for(SEC * 2 + SEC / 5);
+        send_frame(16'hF005, 8'd2, {8'd2, 8'd2}, 0);      // red Sentry yellow
+        run_for(SEC * 60);                                // time-out: blue wins on VP
+
+        // 3v3 round 2: red forfeits.
+        send_frame(16'hF001, 8'd1, 192'd6, 0);
+        send_frame(16'hF001, 8'd1, 192'd2, 0);
+        run_for(SEC * 20 + SEC / 2);
+        send_frame(16'hF005, 8'd2, {8'd4, 8'd1}, 0);
+        run_for(SEC / 2);
 
         axi_read(6'h18, v);
         $display("rx ok=%0d err=%0d", v[15:0], v[31:16]);
