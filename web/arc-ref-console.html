@@ -583,6 +583,8 @@ const CMD = {
   ROBOT_STATUS: 0x0201,
   POWER_HEAT: 0x0202,
   BUFF: 0x0204,
+  ALLOWANCE: 0x0208,
+  RFID: 0x0209,
   HURT: 0x0206,
   SHOOT: 0x0207,
   SERVER_STATE: 0xf101,
@@ -610,6 +612,8 @@ const CMD_NAMES = {
   0x0201: 'robot_status',
   0x0202: 'buffer_heat_data',
   0x0204: 'buff',
+  0x0208: 'projectile_allowance',
+  0x0209: 'rfid_status',
   0x0206: 'hurt_data',
   0x0207: 'shoot_data',
   0xf101: 'server_state',
@@ -834,6 +838,12 @@ function decodePayload(cmd, data) {
       case CMD.FIELD_EVENT: {
         const x = v.getUint32(0, true);
         return { resupply: !!((x >> 2) & 1), center: (x >> 23) & 3, raw: x };
+      }
+      case CMD.ALLOWANCE:
+        return { allow17: v.getUint16(0, true), allow42: v.getUint16(2, true), gold: v.getUint16(4, true), fortress: v.getUint16(6, true) };
+      case CMD.RFID: {
+        const x = v.getUint32(0, true);
+        return { resupplyCard: !!((x >> 19) & 1), centerCard: !!((x >> 23) & 1), raw: x, raw2: data[4] };
       }
       case CMD.BUFF:
         return { recovery: data[0], cooling: v.getUint16(1, true), defence: data[3], vulnerability: data[4], attack: v.getUint16(5, true), energy: data[7] };
@@ -1208,6 +1218,25 @@ class SimLink {
     const heal = this.mode3 && this.alive(r) && rb.zone === 1;
     const p = Uint8Array.of(heal ? 25 : 0, 0, 0, rb.invinc ? 100 : 0, 0, 0, 0, 0x80);
     this.send(CMD.BUFF, p);
+  }
+
+  sendAllowance() {
+    const r = this.link;
+    const p = new Uint8Array(8);
+    const v = new DataView(p.buffer);
+    v.setUint16(this.cfg[r].cal42 ? 2 : 0, this.robots[r].ammo, true);
+    v.setUint16(4, this.mode3 ? this.teams[teamOf(r)].coins & 0xffff : 0, true);
+    this.send(CMD.ALLOWANCE, p);
+  }
+
+  sendRfid() {
+    const r = this.link;
+    const card = this.mode3 && this.stage === ST.COMBAT && this.alive(r);
+    const z = this.robots[r].zone;
+    const x = card ? ((z === 1 ? 1 : 0) << 19) | ((z === 2 ? 1 : 0) << 23) : 0;
+    const p = new Uint8Array(5);
+    new DataView(p.buffer).setUint32(0, x >>> 0, true);
+    this.send(CMD.RFID, p);
   }
 
   sendRobotStatus() {
@@ -1730,6 +1759,8 @@ class SimLink {
     if (this.c5 === 1) this.sendPowerHeat();
     if (this.c17 === 0) this.sendHp();
     if (this.c17 === 8) this.sendBuff();
+    if (this.c5 === 2) this.sendAllowance();
+    if (this.c17 === 12) this.sendRfid();
     if (this.c5 === 3) this.sendServer();
     this.c50 = this.c50 === 49 ? 0 : this.c50 + 1;
     this.c5 = this.c5 === 4 ? 0 : this.c5 + 1;
@@ -2381,6 +2412,8 @@ function renderLinkView() {
   const hp = state.real[CMD.ROBOT_HP];
   const ev = state.real[CMD.FIELD_EVENT];
   const buff = state.real[CMD.BUFF];
+  const allow = state.real[CMD.ALLOWANCE];
+  const rfid = state.real[CMD.RFID];
   const hurt = state.real[CMD.HURT];
   const shot = state.real[CMD.SHOOT];
   const warn = state.real[CMD.REFEREE_WARNING];
@@ -2407,6 +2440,8 @@ function renderLinkView() {
     field(dl, '0x0101 center point', ['free', 'ours', 'enemy', 'both'][ev.center]);
   }
   if (buff && state.server?.mode3) field(dl, '0x0204 recovery / defence', `${buff.recovery} % / ${buff.defence} %`);
+  if (allow) field(dl, '0x0208 allowance 17 / 42 mm, gold', `${allow.allow17} / ${allow.allow42}, ${allow.gold}`);
+  if (rfid && state.server?.mode3) field(dl, '0x0209 RFID cards seen', [rfid.resupplyCard && 'resupply zone', rfid.centerCard && 'center point'].filter(Boolean).join(', ') || 'none');
   if (hurt) field(dl, '0x0206 last hurt', `armor ${hurt.armor}, ${HURT_REASONS[hurt.reason] || hurt.reason}`);
   if (shot) field(dl, '0x0207 last shot', `${shot.bulletType === 2 ? '42' : '17'} mm at ${shot.speed.toFixed(1)} m/s`);
   if (warn) field(dl, '0x0104 last warning', `level ${warn.level}, robot ${warn.offender}, count ${warn.count}`);

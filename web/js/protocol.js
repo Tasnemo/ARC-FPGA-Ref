@@ -15,6 +15,8 @@ export const CMD = {
   ROBOT_STATUS: 0x0201,
   POWER_HEAT: 0x0202,
   BUFF: 0x0204,
+  ALLOWANCE: 0x0208,
+  RFID: 0x0209,
   HURT: 0x0206,
   SHOOT: 0x0207,
   SERVER_STATE: 0xf101,
@@ -42,6 +44,8 @@ export const CMD_NAMES = {
   0x0201: 'robot_status',
   0x0202: 'buffer_heat_data',
   0x0204: 'buff',
+  0x0208: 'projectile_allowance',
+  0x0209: 'rfid_status',
   0x0206: 'hurt_data',
   0x0207: 'shoot_data',
   0xf101: 'server_state',
@@ -266,6 +270,12 @@ export function decodePayload(cmd, data) {
       case CMD.FIELD_EVENT: {
         const x = v.getUint32(0, true);
         return { resupply: !!((x >> 2) & 1), center: (x >> 23) & 3, raw: x };
+      }
+      case CMD.ALLOWANCE:
+        return { allow17: v.getUint16(0, true), allow42: v.getUint16(2, true), gold: v.getUint16(4, true), fortress: v.getUint16(6, true) };
+      case CMD.RFID: {
+        const x = v.getUint32(0, true);
+        return { resupplyCard: !!((x >> 19) & 1), centerCard: !!((x >> 23) & 1), raw: x, raw2: data[4] };
       }
       case CMD.BUFF:
         return { recovery: data[0], cooling: v.getUint16(1, true), defence: data[3], vulnerability: data[4], attack: v.getUint16(5, true), energy: data[7] };

@@ -191,6 +191,25 @@ export class SimLink {
     this.send(CMD.BUFF, p);
   }
 
+  sendAllowance() {
+    const r = this.link;
+    const p = new Uint8Array(8);
+    const v = new DataView(p.buffer);
+    v.setUint16(this.cfg[r].cal42 ? 2 : 0, this.robots[r].ammo, true);
+    v.setUint16(4, this.mode3 ? this.teams[teamOf(r)].coins & 0xffff : 0, true);
+    this.send(CMD.ALLOWANCE, p);
+  }
+
+  sendRfid() {
+    const r = this.link;
+    const card = this.mode3 && this.stage === ST.COMBAT && this.alive(r);
+    const z = this.robots[r].zone;
+    const x = card ? ((z === 1 ? 1 : 0) << 19) | ((z === 2 ? 1 : 0) << 23) : 0;
+    const p = new Uint8Array(5);
+    new DataView(p.buffer).setUint32(0, x >>> 0, true);
+    this.send(CMD.RFID, p);
+  }
+
   sendRobotStatus() {
     const r = this.link;
     const f = this.flags(r);
@@ -711,6 +730,8 @@ export class SimLink {
     if (this.c5 === 1) this.sendPowerHeat();
     if (this.c17 === 0) this.sendHp();
     if (this.c17 === 8) this.sendBuff();
+    if (this.c5 === 2) this.sendAllowance();
+    if (this.c17 === 12) this.sendRfid();
     if (this.c5 === 3) this.sendServer();
     this.c50 = this.c50 === 49 ? 0 : this.c50 + 1;
     this.c5 = this.c5 === 4 ? 0 : this.c5 + 1;

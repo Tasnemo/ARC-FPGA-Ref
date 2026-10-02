@@ -12,6 +12,8 @@
 //   0x0201 robot status     10 Hz
 //   0x0202 buffer and heat  10 Hz
 //   0x0204 robot buffs      ~3 Hz (healing, invincibility)
+//   0x0208 allowance, gold  10 Hz
+//   0x0209 RFID status      ~3 Hz (resupply zone, center point cards)
 //   0x0206 hurt data        on armor hit / collision
 //   0x0207 shoot data       on shot
 // Server-side frames for the browser console only:
@@ -95,7 +97,8 @@ module arc_frame_gen (
     // Pending-frame slots, highest priority first
     localparam integer P_HURT = 0, P_SHOT = 1, P_WARN = 2, P_RESULT = 3,
                        P_STAT = 4, P_EV = 5, P_RS = 6, P_PH = 7, P_HP = 8,
-                       P_FIELD = 9, P_BUFF = 10, P_SRV = 11, NP = 12;
+                       P_FIELD = 9, P_BUFF = 10, P_ALLOW = 11, P_RFID = 12,
+                       P_SRV = 13, NP = 14;
 
     // x / 10 for x < 65536 (exact)
     function [15:0] div10;
@@ -157,6 +160,15 @@ module arc_frame_gen (
     wire        l_heal  = mode3 && l_flags[0] && l_flags2[6:5] == 2'd1;
     wire [8*8-1:0]  pl_0204 = {8'h80, 16'd0, 8'd0, (l_flags2[2] ? 8'd100 : 8'd0), 16'd0,
                                (l_heal ? 8'd25 : 8'd0)};
+    // 17 mm allowance, 42 mm allowance, gold, fortress reserve. The V1.3.0
+    // command table says 6 bytes but its field table and struct have 8.
+    wire [15:0] l_ammo = ammo_flat[lb +: 16];
+    wire [8*8-1:0]  pl_0208 = {16'd0, mode3 ? (lt ? coins_flat[31:16] : coins_flat[15:0]) : 16'd0,
+                               l_cal42 ? l_ammo : 16'd0, l_cal42 ? 16'd0 : l_ammo};
+    // RFID cards seen (in battle only): bit 19 RMUL resupply zone, bit 23 center point
+    wire        l_card  = mode3 && stage == 3'd4 && l_flags[0];
+    wire [8*5-1:0]  pl_0209 = {8'd0, 8'd0, l_card && l_flags2[6:5] == 2'd2, 3'd0,
+                               l_card && l_flags2[6:5] == 2'd1, 19'd0};
     wire [8*1-1:0]  pl_0206 = hurt_l;
     wire [8*7-1:0]  pl_0207 = {shot_speed_l, shot_freq_l,
                                (shot_type_l == 8'd2) ? 8'd3 : 8'd1, shot_type_l};
@@ -273,6 +285,8 @@ module arc_frame_gen (
                     pick[P_HP]:     begin cmd <= 16'h0003; plen <= 8'd16; pl <= pl_0003; end
                     pick[P_FIELD]:  begin cmd <= 16'h0101; plen <= 8'd4;  pl <= pl_0101; end
                     pick[P_BUFF]:   begin cmd <= 16'h0204; plen <= 8'd8;  pl <= pl_0204; end
+                    pick[P_ALLOW]:  begin cmd <= 16'h0208; plen <= 8'd8;  pl <= pl_0208; end
+                    pick[P_RFID]:   begin cmd <= 16'h0209; plen <= 8'd5;  pl <= pl_0209; end
                     default:        begin cmd <= 16'hF101; plen <= SRV_LEN; end
                 endcase
             end
@@ -312,6 +326,8 @@ module arc_frame_gen (
             set[P_HP]     = tick_20ms && c17 == 5'd0;
             set[P_FIELD]  = tick_20ms && c50 == 6'd10;
             set[P_BUFF]   = tick_20ms && c17 == 5'd8;
+            set[P_ALLOW]  = tick_20ms && c5 == 3'd2;
+            set[P_RFID]   = tick_20ms && c17 == 5'd12;
             set[P_SRV]    = tick_20ms && c5 == 3'd3;
             pend <= (pend & ~clr) | set;
 

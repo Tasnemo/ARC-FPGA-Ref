@@ -649,6 +649,8 @@ function renderLinkView() {
   const hp = state.real[CMD.ROBOT_HP];
   const ev = state.real[CMD.FIELD_EVENT];
   const buff = state.real[CMD.BUFF];
+  const allow = state.real[CMD.ALLOWANCE];
+  const rfid = state.real[CMD.RFID];
   const hurt = state.real[CMD.HURT];
   const shot = state.real[CMD.SHOOT];
   const warn = state.real[CMD.REFEREE_WARNING];
@@ -675,6 +677,8 @@ function renderLinkView() {
     field(dl, '0x0101 center point', ['free', 'ours', 'enemy', 'both'][ev.center]);
   }
   if (buff && state.server?.mode3) field(dl, '0x0204 recovery / defence', `${buff.recovery} % / ${buff.defence} %`);
+  if (allow) field(dl, '0x0208 allowance 17 / 42 mm, gold', `${allow.allow17} / ${allow.allow42}, ${allow.gold}`);
+  if (rfid && state.server?.mode3) field(dl, '0x0209 RFID cards seen', [rfid.resupplyCard && 'resupply zone', rfid.centerCard && 'center point'].filter(Boolean).join(', ') || 'none');
   if (hurt) field(dl, '0x0206 last hurt', `armor ${hurt.armor}, ${HURT_REASONS[hurt.reason] || hurt.reason}`);
   if (shot) field(dl, '0x0207 last shot', `${shot.bulletType === 2 ? '42' : '17'} mm at ${shot.speed.toFixed(1)} m/s`);
   if (warn) field(dl, '0x0104 last warning', `level ${warn.level}, robot ${warn.offender}, count ${warn.count}`);

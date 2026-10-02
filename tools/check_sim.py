@@ -30,7 +30,7 @@ for cmd, n in sorted(counts.items()):
     print(f"  0x{cmd:04X}: {n}")
 
 SIZES = {0x0001: 11, 0x0002: 1, 0x0003: 16, 0x0101: 4, 0x0104: 3, 0x0201: 13, 0x0202: 14,
-         0x0204: 8, 0x0206: 1, 0x0207: 7, 0xF101: arcref.SRV_LEN, 0xF102: 5}
+         0x0204: 8, 0x0208: 8, 0x0209: 5, 0x0206: 1, 0x0207: 7, 0xF101: arcref.SRV_LEN, 0xF102: 5}
 check(dec.bad == 0, "every frame passes CRC8 and CRC16")
 check(len(dec.buf) < 230, "no trailing garbage")
 seqs = [s for _, s, _ in frames]
@@ -109,6 +109,10 @@ check(any(x["outputs"] & 4 == 0 for x in rs if x["hp"] > 0), "0x0201 shooter out
 check(of(r1, 0x0003)[-1]["ally_3"] == 70, "0x0003 ally_3 = link robot HP")
 check(all(not f1["robots"][k]["fielded"] for k in (0, 2, 3, 5)), "only the Infantry slots are fielded")
 
+al1 = of(r1, 0x0208)
+check(al1 and al1[-1]["allow_17"] == 1 and al1[-1]["gold"] == 0, "0x0208 reports the link robot's 17 mm allowance (1v1: no gold)")
+check(all(x["raw"] == 0 for x in of(r1, 0x0209)), "0x0209 has no RFID cards in 1v1")
+
 # ------------------------------------------------------------- 1v1 round 2
 print("1v1 round 2")
 r2 = rounds[1]
@@ -166,6 +170,11 @@ check(f3["winner"] == 2 and f3["win_reason"] == "more_vp", "time-out: blue wins 
 check(f3["teams"][1]["damage"] == 606 and f3["teams"][0]["damage"] == 200, "attack damage dealt is tracked")
 ally = of(r3, 0x0003)[-1]
 check(ally["ally_1"] == f3["robots"][0]["hp"] and ally["ally_7"] == f3["robots"][2]["hp"], "0x0003 has red Hero and Sentry HP")
+
+al3 = [x for x in of(r3, 0x0208)]
+check(any(x["allow_17"] == 100 and x["gold"] == 50 for x in al3), "0x0208 shows 100 projectiles and the team gold (50 after both exchanges)")
+check(any(x["resupply_card"] for x in of(r3, 0x0209)) and not any(x["center_card"] for x in of(r3, 0x0209)),
+      "0x0209 shows the resupply zone card for the link robot")
 
 # ------------------------------------------------------------- 3v3 round 2
 print("3v3 round 2")

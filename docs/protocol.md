@@ -6,17 +6,17 @@ and the RoboMaster referee hardware (ARCC 2026 Site Manual, table 1-2). Real
 referee frames carry their real `cmd_id`. Our own control and console frames
 use `0xF0xx`/`0xF1xx`, which the real protocol does not use.
 
-> **Where the layouts come from.** The official V1.3.0 PDF could not be
-> downloaded from this environment. The 2026 layouts below were taken from
-> [rm-proto](https://github.com/Salfa-04/rm-proto), an open-source
-> implementation of the 2026 protocol V1.2.0. `0x0207` is not in that library
-> and still uses the older V1.6 layout. Check everything against V1.3.0 and
-> update `hw/rtl/arc_frame_gen.v`, `web/js/protocol.js` and `tools/arcref.py`
-> together if anything differs.
+> **Checked against the official document.** Every real frame below was
+> compared field by field with *RoboMaster 2026 University Series Communication
+> Protocol V1.3.0 (2026-03-27)*: lengths, field order, bit positions, rates,
+> robot IDs, and both CRC lookup tables (all 256 entries of each). One
+> inconsistency is in the document itself: its command table gives `0x0208` as
+> 6 bytes, but its field table and C struct have four `u16` fields (8 bytes).
+> We send 8, matching the struct.
 
 ## Link
 
-- 115200 baud, 8N1, no flow control
+- 115200 baud, 8N1, no flow control (the power management module's User port rate in V1.3.0, table 1-1)
 - Path: Chrome Web Serial ⇄ Zybo USB-UART (FTDI) ⇄ PS UART1 ⇄ ARM bridge ⇄
   AXI-Lite ⇄ fabric. The ARM only copies bytes. All parsing, CRCs and rules
   run in the fabric.
@@ -68,7 +68,9 @@ default, set in `CONFIG`. A robot's referee parser should accept them as they ar
 | `0x0202` | power_heat_data | 10 Hz | `u16` reserved, `u16` reserved, `u32` reserved, `u16` buffer energy J, `u16` 17 mm barrel heat, `u16` 42 mm barrel heat (14 bytes) |
 | `0x0204` | buff | ~3 Hz | `u8` recovery % (25 in the resupply zone), `u16` cooling buff, `u8` defence % (100 while invincible), `u8` vulnerability %, `u16` attack %, `u8` remaining energy (0x80) |
 | `0x0206` | hurt_data | on hit | `u8` armor_id (bits 0–3) \| reason (bits 4–7): 0 projectile, 1 module offline, 5 collision |
-| `0x0207` | shoot_data | on shot | `u8` bullet type (1 = 17 mm, 2 = 42 mm), `u8` shooter number (1 = 17 mm, 3 = 42 mm), `u8` launch frequency, `f32` speed m/s (V1.6 layout, unverified for 2026) |
+| `0x0207` | shoot_data | on shot | `u8` bullet type (1 = 17 mm, 2 = 42 mm), `u8` shooter number (1 = 17 mm, 3 = 42 mm), `u8` launch frequency Hz, `f32` initial speed m/s |
+| `0x0208` | projectile_allowance | 10 Hz | `u16` 17 mm allowance, `u16` 42 mm allowance, `u16` team gold (0 in 1v1), `u16` fortress reserve (0) |
+| `0x0209` | rfid_status | ~3 Hz | `u32` cards seen, in battle only: bit 19 own RMUL resupply zone, bit 23 center point (RMUL); `u8` second word (0) |
 
 game_progress values: 0 not started, 1 preparation (setup period), 2 15 s
 Referee System self-check, 3 5 s countdown, 4 in battle, 5 settlement.

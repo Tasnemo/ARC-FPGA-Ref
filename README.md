@@ -146,9 +146,9 @@ the commands from the Makefile directly if you don't have `make`.
   Z7-10), 5,000 flip-flops (14 %) and 14 of 80 DSPs. Vivado usually maps
   tighter, but the PS block design adds some AXI glue; `build/utilization.txt`
   from `build_all` has the real numbers.
-- **Check the protocol against ARC's V1.3.0.** The layouts come from an
-  open-source implementation of the 2026 protocol V1.2.0 (the official PDF
-  couldn't be downloaded here). `0x0207` still uses the older layout.
+- **Protocol checked against V1.3.0.** Every real frame matches the official
+  document field by field. The one open question is in the document itself:
+  `0x0208` is listed as 6 bytes, but its struct is 8 bytes; we send 8.
 - **Not yet built in Vivado here.** The RTL passes simulation and a yosys
   synthesis check, but the block-design script, PS settings and the SD/JTAG
   flows haven't been run on real hardware yet.

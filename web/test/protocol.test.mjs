@@ -138,7 +138,7 @@ const bytes = Uint8Array.from(hexDump.trim().split(/\s+/), (h) => parseInt(h, 16
 const d2 = new FrameDecoder();
 const rtl = d2.push(bytes);
 assert.equal(d2.bad, 0, 'RTL frames decode without CRC errors');
-for (const c of [0x0001, 0x0002, 0x0003, 0x0101, 0x0104, 0x0201, 0x0202, 0x0204, 0x0206, 0x0207, 0xf101, 0xf102]) {
+for (const c of [0x0001, 0x0002, 0x0003, 0x0101, 0x0104, 0x0201, 0x0202, 0x0204, 0x0206, 0x0207, 0x0208, 0x0209, 0xf101, 0xf102]) {
   const fs = rtl.filter((x) => x.cmd === c);
   assert.ok(fs.length > 0, `RTL produced 0x${c.toString(16)}`);
   for (const f of fs) assert.ok(decodePayload(c, f.data), `decode 0x${c.toString(16)}`);

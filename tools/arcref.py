@@ -110,6 +110,12 @@ def decode_payload(cmd, p):
     if cmd == 0x0204:
         f = struct.unpack("<BHBBHB", p)
         return dict(zip(("recovery", "cooling", "defence", "vulnerability", "attack", "energy"), f))
+    if cmd == 0x0208:
+        a17, a42, gold, fort = struct.unpack("<4H", p)
+        return {"allow_17": a17, "allow_42": a42, "gold": gold, "fortress": fort}
+    if cmd == 0x0209:
+        v, v2 = struct.unpack("<IB", p)
+        return {"resupply_card": v >> 19 & 1, "center_card": v >> 23 & 1, "raw": v, "raw2": v2}
     if cmd == 0x0206:
         return {"armor": p[0] & 0xF, "reason": p[0] >> 4}
     if cmd == 0x0207:
