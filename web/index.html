@@ -27,7 +27,7 @@
 
   <p id="serialWarning" class="banner warn" hidden>
     This browser has no Web Serial. Use Chrome or Edge on desktop, and open the page from
-    <code>http://localhost</code> (see README). Demo mode still works.
+    <code>http://localhost</code> or the single-file <code>arc-ref-console.html</code> (see README). Demo mode still works.
   </p>
 
   <div id="portHint" class="banner warn" hidden>
@@ -45,9 +45,11 @@
     <section class="scoreboard" aria-label="Scoreboard">
       <div class="team" data-team="0"></div>
       <div class="clock">
+        <div id="modeTag" class="mode-tag"></div>
         <div id="stageName" class="stage">Not started</div>
         <div id="clockTime" class="time">--:--</div>
         <div id="clockSub" class="clock-sub">&nbsp;</div>
+        <div id="captureInfo" class="capture" hidden></div>
         <div id="resultBanner" class="result" hidden></div>
         <div id="resultWhy" class="result-why" hidden></div>
       </div>
@@ -57,6 +59,10 @@
     <section class="controls">
       <div class="panel match">
         <h2>Match control</h2>
+        <div class="seg mode-seg" role="radiogroup" aria-label="Game mode">
+          <button class="seg-btn" data-mode="1v1" role="radio">1v1</button>
+          <button class="seg-btn" data-mode="3v3" role="radio">3v3</button>
+        </div>
         <div class="btn-grid">
           <button class="btn primary" data-game="1" title="Starts the setup period countdown, then init, countdown and battle">Start setup period</button>
           <button class="btn" data-game="2" title="Skip the setup period and go straight to the 15 s referee init">Skip to init</button>
@@ -70,37 +76,27 @@
         <details id="configPanel" class="config">
           <summary>Rules config <span class="hint">(only before a match)</span></summary>
           <form id="configForm">
-            <label class="wide">Preset
-              <select name="preset" id="presetSelect"></select>
-            </label>
-            <label>Game type
-              <select name="gameType">
-                <option value="5">1v1 (RMUL 1v1)</option>
-                <option value="4">3v3 (RMUL 3v3)</option>
-              </select>
-            </label>
             <label>Link robot
-              <select name="link">
-                <option value="0">Red 3</option>
-                <option value="1">Blue 103</option>
-              </select>
+              <select name="link"></select>
             </label>
             <label>Setup period (s) <input name="setupTime" type="number" min="0" max="900" value="120"></label>
             <label>Battle (s) <input name="combatTime" type="number" min="5" max="900" value="120"></label>
-            <label>Max HP <input name="maxHp" type="number" min="1" max="5000" value="200"></label>
-            <label>17 mm damage <input name="hitDmg" type="number" min="0" max="1000" value="20"></label>
-            <label>Barrel heat limit <input name="heatLimit" type="number" min="1" max="2000" value="80"></label>
-            <label>Cooling / s <input name="cooling" type="number" min="0" max="2000" value="12"></label>
-            <label>Chassis power limit (W) <input name="powerLimit" type="number" min="1" max="500" value="120"></label>
-            <label>Speed limit (m/s) <input name="speedLimit" type="number" min="1" max="60" value="25"></label>
-            <label>Projectiles <input name="allowance" type="number" min="0" max="5000" value="200"></label>
-            <button class="btn primary" type="submit">Apply to board</button>
+            <div class="wide stats-wrap">
+              <table class="stats">
+                <thead><tr><th>Robot</th><th>On</th><th>42</th><th>HP</th><th>Heat</th><th>Cool/s</th><th>W</th><th>m/s</th><th>Ammo</th></tr></thead>
+                <tbody id="statsBody"></tbody>
+              </table>
+            </div>
+            <div class="wide row">
+              <button class="btn" type="button" id="btnPreset">Reset to ARCC 2026 stats</button>
+              <button class="btn primary" type="submit">Apply to board</button>
+            </div>
           </form>
         </details>
       </div>
 
-      <div class="panel robot" data-robot="0"></div>
-      <div class="panel robot" data-robot="1"></div>
+      <div class="panel robot" data-team="0"></div>
+      <div class="panel robot" data-team="1"></div>
     </section>
 
     <section class="lower">
@@ -134,49 +130,77 @@
     </section>
   </main>
 
-  <template id="teamTemplate">
+  <template id="teamHeadTemplate">
     <div class="team-head">
       <span class="team-name"></span>
       <span class="badge link-badge" hidden>LINK</span>
       <span class="badge state-badge"></span>
     </div>
-    <div class="hp">
-      <span class="hp-value">---</span><span class="hp-max"></span>
-    </div>
-    <div class="bar hp-bar"><div class="fill"></div><div class="ghost"></div></div>
-    <div class="gauges">
-      <div class="gauge">
-        <span class="g-label">Barrel heat</span>
-        <div class="bar small heat-bar"><div class="fill"></div></div>
-        <span class="g-value heat-value"></span>
-      </div>
-      <div class="gauge">
-        <span class="g-label">Buffer energy</span>
-        <div class="bar small buffer-bar"><div class="fill"></div></div>
-        <span class="g-value buffer-value"></span>
-      </div>
-      <div class="gauge">
-        <span class="g-label">Chassis power</span>
-        <span class="g-value power-value"></span>
-      </div>
-      <div class="gauge">
-        <span class="g-label">Projectiles left</span>
-        <span class="g-value ammo-value"></span>
-      </div>
-      <div class="gauge">
-        <span class="g-label">Cards</span>
-        <span class="g-value cards"></span>
+    <div class="team-stats" hidden>
+      <div class="vp"><span class="vp-value">200</span><span class="vp-label">VP</span></div>
+      <div class="bar vp-bar"><div class="fill"></div></div>
+      <div class="team-nums">
+        <span>Gold <b class="coins"></b></span>
+        <span>Damage dealt <b class="dmg"></b></span>
+        <span class="chip hero42"></span>
       </div>
     </div>
-    <div class="chips">
-      <span class="chip chip-shooter"></span>
-      <span class="chip chip-chassis"></span>
-      <span class="chip chip-gimbal"></span>
+    <div class="units"></div>
+  </template>
+
+  <template id="unitTemplate">
+    <div class="unit">
+      <div class="unit-head">
+        <span class="unit-name"></span>
+        <span class="badge link-badge" hidden>LINK</span>
+        <span class="badge state-badge"></span>
+      </div>
+      <div class="hp">
+        <span class="hp-value">---</span><span class="hp-max"></span>
+      </div>
+      <div class="bar hp-bar"><div class="fill"></div><div class="ghost"></div></div>
+      <div class="gauges">
+        <div class="gauge">
+          <span class="g-label">Barrel heat</span>
+          <div class="bar small heat-bar"><div class="fill"></div></div>
+          <span class="g-value heat-value"></span>
+        </div>
+        <div class="gauge g-buffer">
+          <span class="g-label">Buffer energy</span>
+          <div class="bar small buffer-bar"><div class="fill"></div></div>
+          <span class="g-value buffer-value"></span>
+        </div>
+        <div class="gauge g-power">
+          <span class="g-label">Chassis power</span>
+          <span class="g-value power-value"></span>
+        </div>
+        <div class="gauge">
+          <span class="g-label">Projectiles</span>
+          <span class="g-value ammo-value"></span>
+        </div>
+        <div class="gauge">
+          <span class="g-label">Cards</span>
+          <span class="g-value cards"></span>
+        </div>
+      </div>
+      <div class="chips">
+        <span class="chip chip-shooter"></span>
+        <span class="chip chip-chassis"></span>
+        <span class="chip chip-gimbal"></span>
+        <span class="chip chip-special" hidden></span>
+      </div>
     </div>
   </template>
 
   <template id="robotTemplate">
-    <h2 class="robot-title"></h2>
+    <div class="robot-top">
+      <h2 class="robot-title"></h2>
+      <div class="seg slot-seg" role="tablist" hidden>
+        <button class="seg-btn" data-role="0" role="tab">Hero</button>
+        <button class="seg-btn" data-role="1" role="tab">Infantry</button>
+        <button class="seg-btn" data-role="2" role="tab">Sentry</button>
+      </div>
+    </div>
     <div class="robot-body">
       <svg class="armor" viewBox="0 0 120 120" role="group" aria-label="Armor plates, click to register a hit">
         <rect class="chassis" x="30" y="30" width="60" height="60" rx="8"></rect>
@@ -189,7 +213,7 @@
       </svg>
       <div class="robot-actions">
         <div class="row">
-          <button class="btn primary act-shoot">Fire 17 mm</button>
+          <button class="btn primary act-shoot">Fire</button>
           <label class="inline">at <input class="shoot-speed" type="number" step="0.1" min="0" max="60" value="24.0"> m/s</label>
         </div>
         <fieldset class="row hit-kind">
@@ -201,6 +225,29 @@
         <label class="slider">Chassis draw <output class="power-out">0 W</output>
           <input class="power-in" type="range" min="0" max="200" value="0">
         </label>
+        <div class="v3-only zone-row">
+          <span class="mini-label">Robot is in</span>
+          <div class="seg zone-seg">
+            <button class="seg-btn" data-zone="0">Field</button>
+            <button class="seg-btn" data-zone="1">Resupply</button>
+            <button class="seg-btn" data-zone="2">Capture</button>
+          </div>
+        </div>
+        <div class="v3-only row exchange-row">
+          <button class="btn act-buy" title="Exchange gold for projectiles (in the resupply zone during battle)">Buy</button>
+          <input class="buy-n" type="number" min="1" max="500" value="50">
+          <span class="buy-cost hint"></span>
+        </div>
+        <div class="v3-only row infantry-row">
+          <select class="inf-chassis" title="Infantry chassis type (setup period)">
+            <option value="hp">Chassis: HP priority</option>
+            <option value="power">Chassis: Power priority</option>
+          </select>
+          <select class="inf-launcher" title="Infantry launcher type (setup period)">
+            <option value="cooldown">Launcher: Cooldown</option>
+            <option value="burst">Launcher: Burst</option>
+          </select>
+        </div>
         <div class="row">
           <button class="btn warn act-yellow">Yellow card</button>
           <button class="btn danger act-red">Red card</button>

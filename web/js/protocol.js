@@ -10,9 +10,11 @@ export const CMD = {
   GAME_STATUS: 0x0001,
   GAME_RESULT: 0x0002,
   ROBOT_HP: 0x0003,
+  FIELD_EVENT: 0x0101,
   REFEREE_WARNING: 0x0104,
   ROBOT_STATUS: 0x0201,
   POWER_HEAT: 0x0202,
+  BUFF: 0x0204,
   HURT: 0x0206,
   SHOOT: 0x0207,
   SERVER_STATE: 0xf101,
@@ -26,15 +28,20 @@ export const CMD = {
   C_LIFE: 0xf006,
   C_POWER: 0xf007,
   C_TIME: 0xf008,
+  C_ROBOT: 0xf009,
+  C_ZONE: 0xf00a,
+  C_EXCHANGE: 0xf00b,
 };
 
 export const CMD_NAMES = {
   0x0001: 'game_status',
   0x0002: 'game_result',
   0x0003: 'ally_robot_HP',
+  0x0101: 'event_data',
   0x0104: 'referee_warning',
   0x0201: 'robot_status',
   0x0202: 'buffer_heat_data',
+  0x0204: 'buff',
   0x0206: 'hurt_data',
   0x0207: 'shoot_data',
   0xf101: 'server_state',
@@ -46,7 +53,7 @@ export const GAME_TYPES = { 1: 'RMUC', 2: 'RMUT', 3: 'RMUA', 4: 'RMUL 3v3', 5: '
 export const EVENT_KINDS = {
   1: 'hit', 2: 'shot', 3: 'locked', 4: 'chassis-cut', 5: 'yellow', 6: 'red', 7: 'forfeit',
   8: 'kill', 9: 'revive', 10: 'disconnect', 11: 'reconnect', 12: 'offline-hp', 13: 'unlocked',
-  14: 'yellow-both',
+  14: 'yellow-both', 15: 'exchange', 16: 'immune', 17: 'respawn', 18: 'capture', 19: 'yellow-team',
 };
 export const LOCKS = {
   1: 'barrel heat over limit', 2: 'barrel heat over limit + 100 (rest of round)',
@@ -55,26 +62,56 @@ export const LOCKS = {
 export const WIN_REASONS = {
   0: '', 1: 'opponent defeated', 2: 'more remaining HP', 3: 'opponent took first damage',
   4: 'more shots fired', 5: 'fired first', 6: 'tie: lighter robot wins (referee decides)', 7: 'forfeit',
+  8: 'opponent reached 0 Victory Points', 9: 'more Victory Points', 10: 'more attack damage dealt',
+  11: 'more total remaining HP',
 };
 export const HURT_REASONS = { 0: 'armor hit', 1: 'module offline', 5: 'collision' };
 export const GAME = { SETUP: 1, START: 2, PAUSE: 3, RESUME: 4, END: 5, RESET: 6 };
 export const PENALTY = { BOTH_YELLOW: 1, YELLOW: 2, RED: 3, FORFEIT: 4 };
 export const LIFE = { KILL: 0, REVIVE: 1, DISCONNECT: 2, RECONNECT: 3 };
+export const ZONE = { NONE: 0, RESUPPLY: 1, CAPTURE: 2 };
+export const MODE = { V1: 5, V3: 4 };
+
+// Six robot slots: team = slot >= 3, role = slot % 3.
+export const SLOTS = [
+  { team: 0, role: 'hero', id: 1, name: 'Hero' },
+  { team: 0, role: 'infantry', id: 3, name: 'Infantry' },
+  { team: 0, role: 'sentry', id: 7, name: 'Sentry' },
+  { team: 1, role: 'hero', id: 101, name: 'Hero' },
+  { team: 1, role: 'infantry', id: 103, name: 'Infantry' },
+  { team: 1, role: 'sentry', id: 107, name: 'Sentry' },
+];
 export const HIT_KIND = { MM17: 0, COLLISION: 1, MM42: 2 };
 
-// Robot stat presets from the ARCC 2026 Events Manual. The referee core
-// always plays the 1v1 winning rules; 3v3 presets only change the numbers.
-export const PRESETS = {
-  '1v1': { label: '1v1 Infantry (ARCC 2026)', gameType: 5, combatTime: 120, setupTime: 120,
-    maxHp: 200, heatLimit: 80, cooling: 12, powerLimit: 120, hitDmg: 20, speedLimit: 25, allowance: 200 },
-  infHp: { label: '3v3 Infantry: HP + Cooldown priority', gameType: 4, combatTime: 300, setupTime: 180,
-    maxHp: 350, heatLimit: 88, cooling: 24, powerLimit: 75, hitDmg: 20, speedLimit: 25, allowance: 500 },
-  infPower: { label: '3v3 Infantry: Power + Burst priority', gameType: 4, combatTime: 300, setupTime: 180,
-    maxHp: 300, heatLimit: 230, cooling: 14, powerLimit: 90, hitDmg: 20, speedLimit: 25, allowance: 500 },
-  sentry: { label: '3v3 Sentry', gameType: 4, combatTime: 300, setupTime: 180,
-    maxHp: 400, heatLimit: 260, cooling: 30, powerLimit: 100, hitDmg: 20, speedLimit: 25, allowance: 750 },
+// Robot stats from the ARCC 2026 Events Manual (tables 3-2, 3-3, 3-4, 4-2).
+export const ROBOT_PRESETS = {
+  infantry1v1: { fielded: true, cal42: false, maxHp: 200, heatLimit: 80, cooling: 12, powerLimit: 120, speedLimit: 25, allowance: 200 },
+  hero: { fielded: true, cal42: true, maxHp: 350, heatLimit: 200, cooling: 24, powerLimit: 100, speedLimit: 15, allowance: 0 },
+  sentry: { fielded: true, cal42: false, maxHp: 400, heatLimit: 260, cooling: 30, powerLimit: 100, speedLimit: 25, allowance: 750 },
+  absent: { fielded: false, cal42: false, maxHp: 200, heatLimit: 80, cooling: 12, powerLimit: 120, speedLimit: 25, allowance: 0 },
 };
-export const ROBOT_IDS = [3, 103];
+// 3v3 Infantry: the pilot picks a chassis and a launcher type during setup.
+export const INFANTRY_CHASSIS = { hp: { label: 'HP priority', maxHp: 350, powerLimit: 75 }, power: { label: 'Power priority', maxHp: 300, powerLimit: 90 } };
+export const INFANTRY_LAUNCHER = { cooldown: { label: 'Cooldown priority', heatLimit: 88, cooling: 24 }, burst: { label: 'Burst priority', heatLimit: 230, cooling: 14 } };
+export function infantry3v3(chassis = 'hp', launcher = 'cooldown') {
+  const c = INFANTRY_CHASSIS[chassis];
+  const l = INFANTRY_LAUNCHER[launcher];
+  return { fielded: true, cal42: false, maxHp: c.maxHp, heatLimit: l.heatLimit, cooling: l.cooling, powerLimit: c.powerLimit, speedLimit: 25, allowance: 0 };
+}
+export const MODES = {
+  '1v1': { gameType: 5, combatTime: 120, setupTime: 120, link: 1 },
+  '3v3': { gameType: 4, combatTime: 300, setupTime: 180, link: 1 },
+};
+export function modeRobots(mode, infantry = [{}, {}]) {
+  if (mode === '1v1') {
+    const r = ROBOT_PRESETS;
+    return [r.absent, r.infantry1v1, r.absent, r.absent, r.infantry1v1, r.absent];
+  }
+  const inf = infantry.map((x) => infantry3v3(x.chassis, x.launcher));
+  return [ROBOT_PRESETS.hero, inf[0], ROBOT_PRESETS.sentry, ROBOT_PRESETS.hero, inf[1], ROBOT_PRESETS.sentry];
+}
+
+export const ROBOT_IDS = SLOTS.map((x) => x.id);
 
 const CRC8_TABLE = new Uint8Array(256);
 const CRC16_TABLE = new Uint16Array(256);
@@ -170,18 +207,23 @@ export class FrameDecoder {
 
 // ----------------------------------------------------------------- payloads
 function robotBlock(v, o) {
-  const f = v.getUint8(o + 19);
+  const f = v.getUint8(o + 23);
+  const f2 = v.getUint8(o + 24);
+  const timer = v.getUint16(o + 28, true);
+  const respawning = !!(f2 & 16);
   return {
     hp: v.getUint16(o, true),
     maxHp: v.getUint16(o + 2, true),
-    heat: v.getUint16(o + 4, true),
+    heat: Math.floor(v.getUint16(o + 4, true) / 10),
     heatLimit: v.getUint16(o + 6, true),
-    buffer: v.getUint16(o + 8, true),
+    buffer: Math.floor(v.getUint16(o + 8, true) / 10),
     power: v.getUint16(o + 10, true),
     powerLimit: v.getUint16(o + 12, true),
     allowance: v.getUint16(o + 14, true),
     shots: v.getUint16(o + 16, true),
-    yellow: v.getUint8(o + 18),
+    cooling: v.getUint16(o + 18, true),
+    speedLimit: v.getUint16(o + 20, true),
+    yellow: v.getUint8(o + 22),
     alive: !!(f & 1),
     redCard: !!(f & 2),
     shooterOn: !!(f & 4),
@@ -190,8 +232,16 @@ function robotBlock(v, o) {
     disconnected: !!(f & 32),
     heatLocked: !!(f & 64),
     speedLocked: !!(f & 128),
-    speedLockS: v.getUint8(o + 20),
-    chassisCutDs: v.getUint8(o + 21),
+    fielded: !!(f2 & 1),
+    cal42: !!(f2 & 2),
+    invincible: !!(f2 & 4),
+    weakened: !!(f2 & 8),
+    respawning,
+    zone: (f2 >> 5) & 3,
+    chassisCutDs: v.getUint8(o + 25),
+    speedLockS: v.getUint16(o + 26, true) === 0xffff ? 255 : Math.ceil(v.getUint16(o + 26, true) / 10),
+    respawnS: respawning ? Math.ceil(timer / 10) : 0,
+    invincibleS: respawning ? 0 : Math.ceil(timer / 10),
   };
 }
 
@@ -211,8 +261,14 @@ export function decodePayload(cmd, data) {
       case CMD.ROBOT_HP: {
         const hp = [];
         for (let i = 0; i < 8; i++) hp.push(v.getUint16(i * 2, true));
-        return { ally3: hp[2], all: hp };
+        return { ally1: hp[0], ally3: hp[2], ally7: hp[5], all: hp };
       }
+      case CMD.FIELD_EVENT: {
+        const x = v.getUint32(0, true);
+        return { resupply: !!((x >> 2) & 1), center: (x >> 23) & 3, raw: x };
+      }
+      case CMD.BUFF:
+        return { recovery: data[0], cooling: v.getUint16(1, true), defence: data[3], vulnerability: data[4], attack: v.getUint16(5, true), energy: data[7] };
       case CMD.REFEREE_WARNING:
         return { level: data[0], offender: data[1], count: data[2] };
       case CMD.ROBOT_STATUS:
@@ -234,27 +290,34 @@ export function decodePayload(cmd, data) {
         return { armor: data[0] & 0xf, reason: data[0] >> 4 };
       case CMD.SHOOT:
         return { bulletType: data[0], shooter: data[1], freq: data[2], speed: v.getFloat32(3, true) };
-      case CMD.SERVER_STATE:
-        if (data.length < 66) return null;
+      case CMD.SERVER_STATE: {
+        if (data.length < 212) return null;
+        const team = (t) => ({
+          vp: v.getUint16(8 + 8 * t, true),
+          coins: v.getUint16(10 + 8 * t, true),
+          damage: v.getUint16(12 + 8 * t, true),
+          heroLive: !!(data[14 + 8 * t] & 1),
+        });
         return {
           stage: data[0],
           paused: !!(data[1] & 1),
           firstDmg: (data[1] >> 1) & 3,
           firstShot: (data[1] >> 3) & 3,
+          capture: (data[1] >> 5) & 3,
+          mode3: !!(data[1] & 0x80),
           remain: v.getUint16(2, true),
           winner: data[4],
           winReason: data[5],
           link: data[6],
           gameType: data[7],
-          robots: [robotBlock(v, 8), robotBlock(v, 30)],
-          rxOk: v.getUint16(52, true),
-          rxErr: v.getUint16(54, true),
-          combatTime: v.getUint16(56, true),
-          cooling: v.getUint16(58, true),
-          hitDmg: v.getUint16(60, true),
-          setupTime: v.getUint16(62, true),
-          speedLimit: v.getUint16(64, true),
+          teams: [team(0), team(1)],
+          robots: [0, 1, 2, 3, 4, 5].map((r) => robotBlock(v, 24 + 30 * r)),
+          rxOk: v.getUint16(204, true),
+          rxErr: v.getUint16(206, true),
+          combatTime: v.getUint16(208, true),
+          setupTime: v.getUint16(210, true),
         };
+      }
       case CMD.EVENT:
         return { robot: data[0], kind: data[1], detail: data[2], hp: v.getUint16(3, true) };
       default:
@@ -274,27 +337,39 @@ function bytes(n, fill) {
 
 export const commands = {
   game: (action) => [CMD.C_GAME, Uint8Array.of(action)],
-  config: (c) => [CMD.C_CONFIG, bytes(20, (v) => {
+  // gameType 5 = 1v1, 4 = 3v3; link = slot whose view the real frames give
+  config: (c) => [CMD.C_CONFIG, bytes(6, (v) => {
     v.setUint8(0, c.gameType);
     v.setUint8(1, c.link);
-    [c.combatTime, c.maxHp, c.heatLimit, c.cooling, c.powerLimit, c.hitDmg,
-      c.setupTime, c.speedLimit, c.allowance].forEach((x, i) => v.setUint16(2 + 2 * i, x, true));
+    v.setUint16(2, c.combatTime, true);
+    v.setUint16(4, c.setupTime, true);
   })],
-  hit: (robot, armor, kind = HIT_KIND.MM17) => [CMD.C_HIT, Uint8Array.of(robot, armor, kind)],
+  robot: (slot, c) => [CMD.C_ROBOT, bytes(15, (v) => {
+    v.setUint8(0, slot);
+    v.setUint8(1, (c.fielded ? 1 : 0) | (c.cal42 ? 2 : 0));
+    [c.maxHp, c.heatLimit, c.cooling, c.powerLimit, c.speedLimit, c.allowance]
+      .forEach((x, i) => v.setUint16(2 + 2 * i, x, true));
+  })],
+  hit: (slot, armor, kind = HIT_KIND.MM17) => [CMD.C_HIT, Uint8Array.of(slot, armor, kind)],
   // speed goes twice: as f32 for 0x0207, and in 0.1 m/s for the fabric's limit check
-  shoot: (robot, freq, speed) => [CMD.C_SHOOT, bytes(8, (v) => {
-    v.setUint8(0, robot);
+  shoot: (slot, freq, speed) => [CMD.C_SHOOT, bytes(8, (v) => {
+    v.setUint8(0, slot);
     v.setUint8(1, freq);
     v.setFloat32(2, speed, true);
     v.setUint16(6, Math.round(speed * 10), true);
   })],
-  penalty: (robot, level) => [CMD.C_PENALTY, Uint8Array.of(robot, level)],
-  life: (robot, action) => [CMD.C_LIFE, Uint8Array.of(robot, action)],
-  power: (robot, watts) => [CMD.C_POWER, bytes(3, (v) => {
-    v.setUint8(0, robot);
+  penalty: (slot, level) => [CMD.C_PENALTY, Uint8Array.of(slot, level)],
+  life: (slot, action) => [CMD.C_LIFE, Uint8Array.of(slot, action)],
+  power: (slot, watts) => [CMD.C_POWER, bytes(3, (v) => {
+    v.setUint8(0, slot);
     v.setUint16(1, watts, true);
   })],
   time: (unix) => [CMD.C_TIME, bytes(4, (v) => v.setUint32(0, unix >>> 0, true))],
+  zone: (slot, zone) => [CMD.C_ZONE, Uint8Array.of(slot, zone)],
+  exchange: (slot, n) => [CMD.C_EXCHANGE, bytes(3, (v) => {
+    v.setUint8(0, slot);
+    v.setUint16(1, n, true);
+  })],
 };
 
 export function hex(bytes) {

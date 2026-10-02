@@ -1,6 +1,7 @@
 import {
-  CMD, CMD_NAMES, EVENT_KINDS, GAME, GAME_TYPES, HURT_REASONS, LIFE, LOCKS, PENALTY, PRESETS,
-  ROBOT_IDS, STAGES, WIN_REASONS, FrameDecoder, commands, decodePayload, encode, hex,
+  CMD, CMD_NAMES, EVENT_KINDS, GAME, GAME_TYPES, HIT_KIND, HURT_REASONS, LIFE, LOCKS, MODES,
+  PENALTY, SLOTS, STAGES, WIN_REASONS, FrameDecoder, commands, decodePayload, encode, hex,
+  infantry3v3, modeRobots,
 } from './protocol.js';
 import { SerialLink } from './serial.js';
 import { SimLink } from './sim.js';
@@ -8,9 +9,8 @@ import { SimLink } from './sim.js';
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
-const TEAM_NAMES = ['RED 3', 'BLUE 103'];
-const CONFIG_FIELDS = ['combatTime', 'setupTime', 'maxHp', 'hitDmg', 'heatLimit', 'cooling',
-  'powerLimit', 'speedLimit', 'allowance'];
+const TEAM = ['RED', 'BLUE'];
+const STAT_FIELDS = ['maxHp', 'heatLimit', 'cooling', 'powerLimit', 'speedLimit', 'allowance'];
 
 const state = {
   link: null,
@@ -19,128 +19,239 @@ const state = {
   server: null,        // latest 0xF101
   serverAt: 0,
   real: {},            // latest decoded real frame per cmd_id
-  counts: {},          // frames per cmd_id since connect
-  rates: {},           // frames per second, refreshed every second
+  counts: {},
+  rates: {},
   lastCounts: {},
   rxBytes: 0,
   txBytes: 0,
   rawPaused: false,
   rawLines: [],
   boardText: '',
-  lastHp: [null, null],
   writeChain: Promise.resolve(),
+  uiMode: '1v1',       // used until the board reports its mode
+  role: [1, 1],        // robot each control panel drives (0 hero, 1 infantry, 2 sentry)
+  layout: null,
+  lastLog: null,
+  configDirty: false,
 };
 
-// ------------------------------------------------------------ build DOM
-const teams = $$('.team').map((el) => {
-  el.append($('#teamTemplate').content.cloneNode(true));
-  const r = Number(el.dataset.team);
-  $('.team-name', el).textContent = `${TEAM_NAMES[r]} · INFANTRY`;
-  return {
-    el,
-    linkBadge: $('.link-badge', el),
-    stateBadge: $('.state-badge', el),
-    hpValue: $('.hp-value', el),
-    hpMax: $('.hp-max', el),
-    hpFill: $('.hp-bar .fill', el),
-    hpGhost: $('.hp-bar .ghost', el),
-    heatBar: $('.heat-bar', el),
-    heatFill: $('.heat-bar .fill', el),
-    heatValue: $('.heat-value', el),
-    bufferFill: $('.buffer-bar .fill', el),
-    bufferValue: $('.buffer-value', el),
-    powerValue: $('.power-value', el),
-    ammoValue: $('.ammo-value', el),
-    cards: $('.cards', el),
-    chipShooter: $('.chip-shooter', el),
-    chipChassis: $('.chip-chassis', el),
-    chipGimbal: $('.chip-gimbal', el),
-  };
-});
+const modeOf = (s) => (s ? (s.mode3 ? '3v3' : '1v1') : state.uiMode);
+const slotOf = (t) => (modeOf(state.server) === '1v1' ? 3 * t + 1 : 3 * t + state.role[t]);
+function slotName(r, mode = modeOf(state.server)) {
+  const x = SLOTS[r];
+  return mode === '1v1' ? `${TEAM[x.team]} ${x.id}` : `${TEAM[x.team]} ${x.name}`;
+}
 
-const robots = $$('.panel.robot').map((el) => {
+// ------------------------------------------------------------ team cards
+const teamEls = $$('.team');
+let teams = [];
+
+function buildTeams(mode) {
+  state.layout = mode;
+  teams = teamEls.map((el) => {
+    const t = Number(el.dataset.team);
+    el.replaceChildren($('#teamHeadTemplate').content.cloneNode(true));
+    el.classList.toggle('v3', mode === '3v3');
+    $('.team-name', el).textContent = mode === '1v1' ? `${TEAM[t]} ${SLOTS[3 * t + 1].id} · INFANTRY` : `${TEAM[t]} TEAM`;
+    $('.team-stats', el).hidden = mode !== '3v3';
+    $('.team-head .state-badge', el).hidden = mode === '3v3';
+    const slots = mode === '1v1' ? [3 * t + 1] : [3 * t, 3 * t + 1, 3 * t + 2];
+    const units = slots.map((slot) => {
+      const u = $('#unitTemplate').content.firstElementChild.cloneNode(true);
+      $('.units', el).append(u);
+      $('.unit-head', u).hidden = mode === '1v1';
+      $('.unit-name', u).textContent = `${SLOTS[slot].name} ${SLOTS[slot].id}`;
+      u.classList.toggle('compact', mode === '3v3');
+      return {
+        slot, el: u,
+        link: mode === '1v1' ? $('.team-head .link-badge', el) : $('.link-badge', u),
+        badge: mode === '1v1' ? $('.team-head .state-badge', el) : $('.unit-head .state-badge', u),
+        hpValue: $('.hp-value', u), hpMax: $('.hp-max', u),
+        hpFill: $('.hp-bar .fill', u), hpGhost: $('.hp-bar .ghost', u),
+        heatBar: $('.heat-bar', u), heatFill: $('.heat-bar .fill', u), heatValue: $('.heat-value', u),
+        bufferFill: $('.buffer-bar .fill', u), bufferValue: $('.buffer-value', u),
+        powerValue: $('.power-value', u), ammoValue: $('.ammo-value', u), cards: $('.cards', u),
+        chipShooter: $('.chip-shooter', u), chipChassis: $('.chip-chassis', u),
+        chipGimbal: $('.chip-gimbal', u), chipSpecial: $('.chip-special', u),
+      };
+    });
+    return {
+      el, t, units,
+      vpValue: $('.vp-value', el), vpFill: $('.vp-bar .fill', el),
+      coins: $('.coins', el), dmg: $('.dmg', el), hero42: $('.hero42', el),
+    };
+  });
+  buildLinkOptions(mode);
+}
+
+// ------------------------------------------------------------ controls
+const panels = $$('.panel.robot').map((el) => {
+  const t = Number(el.dataset.team);
   el.append($('#robotTemplate').content.cloneNode(true));
-  const r = Number(el.dataset.robot);
-  $('.robot-title', el).textContent = `${TEAM_NAMES[r]} controls`;
   const ui = {
-    el,
+    el, t,
+    title: $('.robot-title', el),
     plates: $$('.plate', el),
     speed: $('.shoot-speed', el),
+    shoot: $('.act-shoot', el),
     powerIn: $('.power-in', el),
     powerOut: $('.power-out', el),
     disconnect: $('.act-disconnect', el),
+    slotSeg: $('.slot-seg', el),
+    zoneSeg: $('.zone-seg', el),
+    buyN: $('.buy-n', el),
+    buyCost: $('.buy-cost', el),
+    infChassis: $('.inf-chassis', el),
+    infLauncher: $('.inf-launcher', el),
+    infRow: $('.infantry-row', el),
   };
-  $$('.hit-kind input', el).forEach((x) => { x.name = `hitKind${r}`; });
+  $$('.hit-kind input', el).forEach((x) => { x.name = `hitKind${t}`; });
   const hitKind = () => Number($('.hit-kind input:checked', el)?.value || 0);
+  const slot = () => slotOf(t);
+
   ui.plates.forEach((p) => {
     p.setAttribute('tabindex', '0');
     const fire = () => {
-      if (!el.classList.contains('disabled')) send(commands.hit(r, Number(p.dataset.armor), hitKind()));
+      if (!el.classList.contains('disabled')) send(commands.hit(slot(), Number(p.dataset.armor), hitKind()));
     };
     p.addEventListener('click', fire);
     p.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fire(); } });
   });
-  $('.act-shoot', el).addEventListener('click', () => {
+  ui.shoot.addEventListener('click', () => {
     const speed = Math.max(0, Math.min(60, parseFloat(ui.speed.value) || 0));
-    send(commands.shoot(r, 5, speed));
+    send(commands.shoot(slot(), 5, speed));
   });
   let powerTimer = null;
   ui.powerIn.addEventListener('input', () => {
     ui.powerOut.textContent = `${ui.powerIn.value} W`;
     clearTimeout(powerTimer);
-    powerTimer = setTimeout(() => send(commands.power(r, Number(ui.powerIn.value))), 60);
+    powerTimer = setTimeout(() => send(commands.power(slot(), Number(ui.powerIn.value))), 60);
   });
-  $('.act-yellow', el).addEventListener('click', () => send(commands.penalty(r, PENALTY.YELLOW)));
+  $$('.seg-btn', ui.slotSeg).forEach((b) => b.addEventListener('click', () => {
+    state.role[t] = Number(b.dataset.role);
+    syncPanelInputs(ui);
+    render();
+  }));
+  $$('.seg-btn', ui.zoneSeg).forEach((b) => b.addEventListener('click', () => send(commands.zone(slot(), Number(b.dataset.zone)))));
+  $('.act-buy', el).addEventListener('click', () => send(commands.exchange(slot(), Math.max(1, Math.min(500, Number(ui.buyN.value) || 0)))));
+  const sendInfantry = () => send(commands.robot(slot(), infantry3v3(ui.infChassis.value, ui.infLauncher.value)));
+  ui.infChassis.addEventListener('change', sendInfantry);
+  ui.infLauncher.addEventListener('change', sendInfantry);
+  $('.act-yellow', el).addEventListener('click', () => send(commands.penalty(slot(), PENALTY.YELLOW)));
   $('.act-red', el).addEventListener('click', () => {
-    if (confirm(`Red card ${TEAM_NAMES[r]}? The robot is destroyed.`)) send(commands.penalty(r, PENALTY.RED));
+    if (confirm(`Red card ${slotName(slot())}? The robot is ejected.`)) send(commands.penalty(slot(), PENALTY.RED));
   });
   $('.act-forfeit', el).addEventListener('click', () => {
-    if (confirm(`${TEAM_NAMES[r]} forfeits? The match ends.`)) send(commands.penalty(r, PENALTY.FORFEIT));
+    if (confirm(`${TEAM[t]} forfeits? The round ends.`)) send(commands.penalty(slot(), PENALTY.FORFEIT));
   });
-  $('.act-kill', el).addEventListener('click', () => send(commands.life(r, LIFE.KILL)));
-  $('.act-revive', el).addEventListener('click', () => send(commands.life(r, LIFE.REVIVE)));
+  $('.act-kill', el).addEventListener('click', () => send(commands.life(slot(), LIFE.KILL)));
+  $('.act-revive', el).addEventListener('click', () => send(commands.life(slot(), LIFE.REVIVE)));
   ui.disconnect.addEventListener('click', () => {
-    const offline = state.server?.robots[r]?.disconnected;
-    send(commands.life(r, offline ? LIFE.RECONNECT : LIFE.DISCONNECT));
+    const offline = state.server?.robots[slot()]?.disconnected;
+    send(commands.life(slot(), offline ? LIFE.RECONNECT : LIFE.DISCONNECT));
   });
   return ui;
 });
 
+// Speed field follows the selected robot's limit (just under it).
+function syncPanelInputs(ui) {
+  const r = state.server?.robots[slotOf(ui.t)];
+  if (r) ui.speed.value = (Math.max(1, r.speedLimit - 1)).toFixed(1);
+  if (r) ui.powerIn.value = r.power;
+  ui.powerOut.textContent = `${ui.powerIn.value} W`;
+}
+
+// ------------------------------------------------------------ match control
 $$('[data-game]').forEach((b) => {
   b.addEventListener('click', () => {
     const a = Number(b.dataset.game);
-    if (a === GAME.END && !confirm('End the round now? The winner is decided by the 1v1 criteria.')) return;
+    if (a === GAME.END && !confirm('End the round now? The winner is decided by the rules for this mode.')) return;
     send(commands.game(a));
   });
 });
 $('#btnBothYellow').addEventListener('click', () => send(commands.penalty(0, PENALTY.BOTH_YELLOW)));
 
-const presetSelect = $('#presetSelect');
-for (const [key, p] of Object.entries(PRESETS)) presetSelect.append(new Option(p.label, key));
-presetSelect.append(new Option('Custom', 'custom'));
-presetSelect.addEventListener('change', () => {
-  const p = PRESETS[presetSelect.value];
-  if (!p) return;
+function infantryChoices() {
+  return panels.map((p) => ({ chassis: p.infChassis.value, launcher: p.infLauncher.value }));
+}
+
+function applyMode(mode, { combatTime, setupTime, link } = MODES[mode], robots = modeRobots(mode, infantryChoices())) {
+  send(commands.config({ gameType: MODES[mode].gameType, link, combatTime, setupTime }));
+  robots.forEach((c, slot) => send(commands.robot(slot, c)));
+}
+
+$$('.mode-seg .seg-btn').forEach((b) => b.addEventListener('click', () => {
+  const mode = b.dataset.mode;
+  state.uiMode = mode;
+  if (state.link && state.server?.stage === 0) {
+    applyMode(mode);
+    fillStatsTable(modeRobots(mode, infantryChoices()));
+    const form = $('#configForm');
+    form.combatTime.value = MODES[mode].combatTime;
+    form.setupTime.value = MODES[mode].setupTime;
+    state.configDirty = false;
+  }
+  render();
+}));
+
+// ------------------------------------------------------------ rules config
+const statsBody = $('#statsBody');
+const statRows = SLOTS.map((x, slot) => {
+  const tr = document.createElement('tr');
+  const name = document.createElement('td');
+  name.textContent = `${TEAM[x.team][0]} ${x.name}`;
+  name.className = `slot-name t${x.team}`;
+  tr.append(name);
+  const cell = (input) => { const td = document.createElement('td'); td.append(input); tr.append(td); return input; };
+  const box = (cls) => { const i = document.createElement('input'); i.type = 'checkbox'; i.className = cls; return cell(i); };
+  const num = (k) => { const i = document.createElement('input'); i.type = 'number'; i.min = 0; i.max = 5000; i.dataset.k = k; return cell(i); };
+  const row = { tr, fielded: box('st-on'), cal42: box('st-42'), nums: Object.fromEntries(STAT_FIELDS.map((k) => [k, num(k)])) };
+  statsBody.append(tr);
+  return row;
+});
+
+function fillStatsTable(robots) {
+  robots.forEach((c, i) => {
+    const row = statRows[i];
+    row.fielded.checked = c.fielded;
+    row.cal42.checked = c.cal42;
+    for (const k of STAT_FIELDS) row.nums[k].value = c[k];
+  });
+}
+
+function readStatsTable() {
+  const n = (x) => Math.max(0, Math.min(0xffff, Math.round(Number(x.value) || 0)));
+  return statRows.map((row) => ({
+    fielded: row.fielded.checked,
+    cal42: row.cal42.checked,
+    ...Object.fromEntries(STAT_FIELDS.map((k) => [k, n(row.nums[k])])),
+  }));
+}
+
+function buildLinkOptions(mode) {
+  const sel = $('#configForm').link;
+  const keep = sel.value;
+  sel.replaceChildren(...(mode === '1v1' ? [1, 4] : [0, 1, 2, 3, 4, 5]).map((slot) => new Option(`${slotName(slot, mode)} (ID ${SLOTS[slot].id})`, slot)));
+  if ([...sel.options].some((o) => o.value === keep)) sel.value = keep;
+}
+
+$('#btnPreset').addEventListener('click', () => {
+  const mode = modeOf(state.server);
+  fillStatsTable(modeRobots(mode, infantryChoices()));
   const form = $('#configForm');
-  form.gameType.value = String(p.gameType);
-  for (const k of CONFIG_FIELDS) form[k].value = p[k];
-  configDirty = true;
+  form.combatTime.value = MODES[mode].combatTime;
+  form.setupTime.value = MODES[mode].setupTime;
+  state.configDirty = true;
 });
 
 $('#configForm').addEventListener('submit', (e) => {
   e.preventDefault();
-  const f = new FormData(e.target);
-  const n = (k) => Math.max(0, Math.min(0xffff, Math.round(Number(f.get(k)) || 0)));
-  const c = { gameType: n('gameType'), link: n('link') };
-  for (const k of CONFIG_FIELDS) c[k] = n(k);
-  send(commands.config(c));
-  configDirty = false;
+  const form = e.target;
+  const n = (k) => Math.max(0, Math.min(0xffff, Math.round(Number(form[k].value) || 0)));
+  applyMode(modeOf(state.server), { combatTime: n('combatTime'), setupTime: n('setupTime'), link: n('link') }, readStatsTable());
+  state.configDirty = false;
 });
-let configDirty = false;
-$('#configForm').addEventListener('input', (e) => {
-  configDirty = true;
-  if (e.target !== presetSelect) presetSelect.value = 'custom';
-});
+$('#configForm').addEventListener('input', () => { state.configDirty = true; });
 
 $('#btnClearLog').addEventListener('click', () => { $('#eventLog').replaceChildren(); });
 $('#btnPauseRaw').addEventListener('click', (e) => {
@@ -163,7 +274,7 @@ async function connect(link, openOpts) {
   await state.link?.close();
   Object.assign(state, {
     decoder: new FrameDecoder(), server: null, serverAt: 0, real: {}, counts: {}, rates: {},
-    lastCounts: {}, rxBytes: 0, txBytes: 0, rawLines: [], boardText: '', lastHp: [null, null],
+    lastCounts: {}, rxBytes: 0, txBytes: 0, rawLines: [], boardText: '', configDirty: false,
   });
   state.decoder.onSkipped = onBoardText;
   link.onData = onData;
@@ -183,7 +294,6 @@ async function connect(link, openOpts) {
   state.link = link;
   state.connectedAt = performance.now();
   setLinkUi(link);
-  // Give the board wall-clock time for SyncTimeStamp.
   send(commands.time(Math.floor(Date.now() / 1000)));
 }
 
@@ -200,8 +310,8 @@ function send([cmd, payload]) {
 
 function setLinkUi(link, reason) {
   $('#btnConnect').hidden = !!link;
-  $('#btnDemo').hidden = !!link;
   $('#btnOtherPort').hidden = !!link || !SerialLink.supported();
+  $('#btnDemo').hidden = !!link;
   $('#btnDisconnect').hidden = !link;
   $('#portHint').hidden = true;
   const pill = $('#linkPill');
@@ -217,16 +327,18 @@ function onData(chunk) {
     state.counts[f.cmd] = (state.counts[f.cmd] || 0) + 1;
     const d = decodePayload(f.cmd, f.data);
     if (f.cmd === CMD.SERVER_STATE && d) {
+      const first = !state.server;
       state.server = d;
       state.serverAt = performance.now();
+      if (first) panels.forEach(syncPanelInputs);
     } else if (f.cmd === CMD.EVENT && d) {
       logEvent(d);
     } else if (d) {
       state.real[f.cmd] = d;
-      if (f.cmd === CMD.GAME_RESULT || f.cmd === CMD.REFEREE_WARNING) logReal(f.cmd, d);
+      if (f.cmd === CMD.GAME_RESULT) addLogLine(null, 'k-revive', `round over: ${['draw', 'RED wins', 'BLUE wins'][d.winner] || '?'}`);
     }
     if (!state.rawPaused && !(f.cmd === CMD.POWER_HEAT && $('#hide0202').checked)) {
-      state.rawLines.push(`${f.cmd.toString(16).padStart(4, '0')} ${(CMD_NAMES[f.cmd] || '?').padEnd(15)} ${hex(f.raw)}`);
+      state.rawLines.push(`${f.cmd.toString(16).padStart(4, '0')} ${(CMD_NAMES[f.cmd] || '?').padEnd(16)} ${hex(f.raw)}`);
       if (state.rawLines.length > 200) state.rawLines.splice(0, state.rawLines.length - 200);
     }
   }
@@ -249,7 +361,7 @@ function matchClock() {
   return ['idle', 'setup', 'init', 'count', '', 'end'][s.stage] || '';
 }
 
-function addLogLine(robot, cls, text, hpText = '') {
+function addLogLine(robot, cls, text, valueText = '') {
   const li = document.createElement('li');
   const t = document.createElement('span');
   t.className = 't';
@@ -257,18 +369,18 @@ function addLogLine(robot, cls, text, hpText = '') {
   const body = document.createElement('span');
   if (robot !== null) {
     const who = document.createElement('span');
-    who.className = `who r${robot}`;
-    who.textContent = `${TEAM_NAMES[robot]} `;
+    who.className = `who r${SLOTS[robot].team}`;
+    who.textContent = `${slotName(robot)} `;
     body.append(who);
   }
   const what = document.createElement('span');
   what.className = cls;
   what.textContent = text;
   body.append(what);
-  const hp = document.createElement('span');
-  hp.className = 'hpv';
-  hp.textContent = hpText;
-  li.append(t, body, hp);
+  const v = document.createElement('span');
+  v.className = 'hpv';
+  v.textContent = valueText;
+  li.append(t, body, v);
   const log = $('#eventLog');
   log.prepend(li);
   while (log.children.length > 300) log.lastChild.remove();
@@ -293,41 +405,48 @@ function eventText(e) {
     case 12: return 'offline: -5 % max HP';
     case 13: return e.detail === 1 ? 'launcher unlocked (heat back to 0)' : 'launcher unlocked (speed lock over)';
     case 14: return `both teams yellow #${e.detail}: -5 %`;
+    case 15: return e.detail === 0 ? `bought projectiles (now ${e.hp})` : 'exchange refused (not in resupply zone, Sentry, or not enough gold)';
+    case 16: return "42 mm hit ignored: attacker's Hero is idle or down";
+    case 17: return `respawned at ${e.hp} HP (invincible 30 s, weakened)`;
+    case 19: return "teammate's yellow card: -5 %";
     default: return EVENT_KINDS[e.kind] || `event ${e.kind}`;
   }
 }
 
 function logEvent(e) {
-  const kind = EVENT_KINDS[e.kind] || `event-${e.kind}`;
-  if (e.kind === 1) flashPlate(e.robot, e.detail & 0xf);
   if (e.kind === 2) return; // shots are frequent; heat and projectile gauges show them
+  if (e.kind === 1) flashPlate(e.robot, e.detail & 0xf);
+  if (e.kind === 18) {
+    addLogLine(null, 'k-capture', `capture point: ${['free', 'RED holds', 'BLUE holds', 'contested'][e.detail]}`);
+    return;
+  }
+  const kind = EVENT_KINDS[e.kind] || `event-${e.kind}`;
   const text = eventText(e);
-  // Offline drain repeats every second; fold a run into one line.
+  const value = e.kind === 15 ? '' : `${e.hp} HP`;
   const last = state.lastLog;
   if (e.kind === 12 && last && last.robot === e.robot && last.kind === e.kind && last.li.isConnected) {
     last.n++;
     last.li.children[1].lastChild.textContent = `${text} ×${last.n}`;
-    last.li.children[2].textContent = `${e.hp} HP`;
+    last.li.children[2].textContent = value;
   } else {
-    const li = addLogLine(e.robot, `k-${kind}`, text, `${e.hp} HP`);
+    const li = addLogLine(e.robot, `k-${kind}`, text, value);
     state.lastLog = { li, robot: e.robot, kind: e.kind, n: 1 };
   }
   if (e.hp === 0 && [1, 6, 8, 12].includes(e.kind)) addLogLine(e.robot, 'k-defeated', 'defeated');
-  if ([1, 5, 12, 14].includes(e.kind)) {
-    teams[e.robot].el.classList.remove('flash');
-    void teams[e.robot].el.offsetWidth;
-    teams[e.robot].el.classList.add('flash');
-  }
-}
-
-function logReal(cmd, d) {
-  if (cmd === CMD.GAME_RESULT) {
-    addLogLine(null, 'k-revive', `round over: ${['draw', 'RED wins', 'BLUE wins'][d.winner] || '?'}`);
+  if ([1, 5, 12, 14, 19].includes(e.kind)) {
+    const u = teams.flatMap((t) => t.units).find((x) => x.slot === e.robot);
+    if (u) {
+      u.el.classList.remove('flash');
+      void u.el.offsetWidth;
+      u.el.classList.add('flash');
+    }
   }
 }
 
 function flashPlate(robot, armor) {
-  const p = robots[robot]?.plates[armor];
+  const panel = panels[SLOTS[robot].team];
+  if (slotOf(panel.t) !== robot) return;
+  const p = panel.plates[armor];
   if (!p) return;
   p.classList.remove('hit');
   void p.getBoundingClientRect();
@@ -343,59 +462,82 @@ function pct(a, b) {
   return b ? Math.max(0, Math.min(100, (100 * a) / b)) : 0;
 }
 
+function setChip(chip, cls, text) {
+  chip.hidden = !text;
+  chip.className = `chip ${cls}`;
+  chip.textContent = text;
+}
+
+function renderUnit(u, r, s) {
+  if (!r || !r.fielded) {
+    u.el.classList.add('absent');
+    u.hpValue.textContent = r ? '—' : '---';
+    u.hpMax.textContent = r ? 'not fielded' : '';
+    u.hpFill.style.width = u.hpGhost.style.width = '0%';
+    for (const x of [u.heatValue, u.bufferValue, u.powerValue, u.ammoValue]) x.textContent = '';
+    u.heatFill.style.width = u.bufferFill.style.width = '0%';
+    u.badge.textContent = r ? '' : 'OFFLINE';
+    u.badge.className = 'badge state-badge';
+    u.link.hidden = true;
+    u.cards.replaceChildren();
+    for (const c of [u.chipShooter, u.chipChassis, u.chipGimbal, u.chipSpecial]) setChip(c, '', '');
+    u.el.classList.remove('dead');
+    return;
+  }
+  u.el.classList.remove('absent');
+  u.hpValue.textContent = r.hp;
+  u.hpMax.textContent = `/ ${r.maxHp}`;
+  u.hpFill.style.width = u.hpGhost.style.width = `${pct(r.hp, r.maxHp)}%`;
+  u.heatFill.style.width = `${pct(r.heat, r.heatLimit)}%`;
+  u.heatBar.classList.toggle('over', r.heat > r.heatLimit);
+  u.heatValue.textContent = `${r.heat} / ${r.heatLimit}`;
+  u.bufferFill.style.width = `${pct(r.buffer, 60)}%`;
+  u.bufferValue.textContent = `${r.buffer} J`;
+  u.powerValue.textContent = `${r.power} / ${r.powerLimit} W`;
+  u.ammoValue.textContent = u.el.classList.contains('compact')
+    ? `${r.allowance} × ${r.cal42 ? '42' : '17'} mm`
+    : `${r.allowance} ${r.cal42 ? '42 mm' : '17 mm'} (${r.shots} fired)`;
+  u.link.hidden = s.link !== u.slot;
+  const dead = !r.alive;
+  u.badge.textContent = r.redCard ? 'EJECTED' : r.respawning ? `RESPAWN ${r.respawnS}s` : dead ? 'DEFEATED'
+    : r.disconnected ? 'OFFLINE' : 'ONLINE';
+  u.badge.className = `badge state-badge${dead || r.disconnected ? ' dead' : ''}`;
+  u.el.classList.toggle('dead', dead);
+  let shooter = ['on', 'Launcher on'];
+  if (!r.shooterOn) {
+    if (r.weakened) shooter = ['warn', 'Launcher locked: weakened'];
+    else if (r.speedLocked) shooter = ['bad', r.speedLockS === 255 ? 'Launcher locked: speed (round)' : `Launcher locked: speed ${r.speedLockS} s`];
+    else if (r.heatLocked) shooter = ['bad', 'Launcher locked: heat'];
+    else if (r.allowance === 0 && r.alive) shooter = ['warn', 'No projectiles'];
+    else shooter = ['', 'Launcher off'];
+  }
+  setChip(u.chipShooter, ...shooter);
+  setChip(u.chipChassis, ...(r.chassisOn ? ['on', 'Chassis on']
+    : r.chassisCutDs ? ['bad', `Chassis cut ${(r.chassisCutDs / 10).toFixed(1)} s`] : ['', 'Chassis off']));
+  setChip(u.chipGimbal, ...(r.disconnected ? ['bad', 'Disconnected'] : r.gimbalOn ? ['on', 'Gimbal on'] : ['', 'Gimbal off']));
+  const special = r.invincible ? ['on', `Invincible ${r.invincibleS} s`]
+    : r.zone === 1 ? ['on', 'In resupply zone'] : r.zone === 2 ? ['warn', 'On capture point'] : ['', ''];
+  setChip(u.chipSpecial, ...special);
+  const cards = [];
+  for (let k = 0; k < Math.min(r.yellow, 8); k++) cards.push('<span class="card yellow"></span>');
+  if (r.redCard) cards.push('<span class="card red"></span>');
+  u.cards.innerHTML = cards.length ? cards.join('') : '<span class="hint">none</span>';
+}
+
 function renderTeams(s) {
-  teams.forEach((t, i) => {
-    const r = s?.robots[i];
-    if (!r) {
-      t.hpValue.textContent = '---';
-      t.hpMax.textContent = '';
-      t.hpFill.style.width = t.hpGhost.style.width = '0%';
-      t.heatValue.textContent = t.bufferValue.textContent = t.powerValue.textContent = t.ammoValue.textContent = '';
-      for (const c of [t.chipShooter, t.chipChassis, t.chipGimbal]) { c.textContent = ''; c.hidden = true; }
-      t.heatFill.style.width = t.bufferFill.style.width = '0%';
-      t.stateBadge.textContent = 'OFFLINE';
-      t.stateBadge.className = 'badge state-badge';
-      t.linkBadge.hidden = true;
-      t.cards.replaceChildren();
-      t.el.classList.remove('dead');
-      return;
+  const mode = modeOf(s);
+  if (state.layout !== mode) buildTeams(mode);
+  for (const tm of teams) {
+    for (const u of tm.units) renderUnit(u, s?.robots[u.slot], s);
+    if (mode === '3v3') {
+      const t = s?.teams[tm.t];
+      tm.vpValue.textContent = t ? t.vp : '---';
+      tm.vpFill.style.width = `${t ? pct(t.vp, 200) : 0}%`;
+      tm.coins.textContent = t ? t.coins : '';
+      tm.dmg.textContent = t ? t.damage : '';
+      setChip(tm.hero42, t?.heroLive ? 'on' : '', t ? (t.heroLive ? '42 mm hits count' : '42 mm hits blocked') : '');
     }
-    t.hpValue.textContent = r.hp;
-    t.hpMax.textContent = `/ ${r.maxHp}`;
-    t.hpFill.style.width = `${pct(r.hp, r.maxHp)}%`;
-    t.hpGhost.style.width = `${pct(r.hp, r.maxHp)}%`;
-    t.heatFill.style.width = `${pct(r.heat, r.heatLimit)}%`;
-    t.heatBar.classList.toggle('over', r.heat > r.heatLimit);
-    t.heatValue.textContent = `${r.heat} / ${r.heatLimit}`;
-    t.bufferFill.style.width = `${pct(r.buffer, 60)}%`;
-    t.bufferValue.textContent = `${r.buffer} J`;
-    t.powerValue.textContent = `${r.power} / ${r.powerLimit} W`;
-    t.ammoValue.textContent = `${r.allowance} (${r.shots} fired)`;
-    t.linkBadge.hidden = s.link !== i;
-    const dead = !r.alive;
-    t.stateBadge.textContent = r.redCard ? 'EJECTED' : dead ? 'DEFEATED' : r.disconnected ? 'OFFLINE' : 'ONLINE';
-    let shooter = ['on', 'Launcher on'];
-    if (!r.shooterOn) {
-      if (r.speedLocked) shooter = ['bad', r.speedLockS === 255 ? 'Launcher locked: speed (round)' : `Launcher locked: speed ${r.speedLockS} s`];
-      else if (r.heatLocked) shooter = ['bad', 'Launcher locked: heat'];
-      else if (r.allowance === 0 && r.alive) shooter = ['warn', 'No projectiles'];
-      else shooter = ['', 'Launcher off'];
-    }
-    const chassis = r.chassisOn ? ['on', 'Chassis on']
-      : r.chassisCutDs ? ['bad', `Chassis cut ${(r.chassisCutDs / 10).toFixed(1)} s`] : ['', 'Chassis off'];
-    const gimbal = r.disconnected ? ['bad', 'Disconnected'] : r.gimbalOn ? ['on', 'Gimbal on'] : ['', 'Gimbal off'];
-    for (const [chip, [cls, text]] of [[t.chipShooter, shooter], [t.chipChassis, chassis], [t.chipGimbal, gimbal]]) {
-      chip.hidden = false;
-      chip.className = `chip ${cls}`;
-      chip.textContent = text;
-    }
-    t.stateBadge.className = `badge state-badge${dead || r.disconnected ? ' dead' : ''}`;
-    t.el.classList.toggle('dead', dead);
-    const cards = [];
-    for (let k = 0; k < Math.min(r.yellow, 8); k++) cards.push('<span class="card yellow"></span>');
-    if (r.redCard) cards.push('<span class="card red"></span>');
-    t.cards.innerHTML = cards.length ? cards.join('') : '<span class="hint">none</span>';
-  });
+  }
 }
 
 function renderClock(s) {
@@ -403,6 +545,8 @@ function renderClock(s) {
   const timeEl = $('#clockTime');
   const sub = $('#clockSub');
   const banner = $('#resultBanner');
+  const cap = $('#captureInfo');
+  $('#modeTag').textContent = modeOf(s);
   if (!s) {
     stageEl.textContent = state.link ? 'Waiting for board' : 'Not connected';
     stageEl.className = 'stage';
@@ -410,6 +554,7 @@ function renderClock(s) {
     timeEl.className = 'time';
     sub.innerHTML = '&nbsp;';
     banner.hidden = true;
+    cap.hidden = true;
     $('#resultWhy').hidden = true;
     return;
   }
@@ -419,7 +564,10 @@ function renderClock(s) {
   else if (s.stage === 5) timeEl.textContent = '0:00';
   else timeEl.textContent = fmtTime(s.remain);
   timeEl.className = `time${s.stage >= 1 && s.stage <= 3 ? ' countdown' : ''}`;
-  sub.textContent = `${GAME_TYPES[s.gameType] || `type ${s.gameType}`} · link ${TEAM_NAMES[s.link]}`;
+  sub.textContent = `${GAME_TYPES[s.gameType] || `type ${s.gameType}`} · link ${slotName(s.link)}`;
+  cap.hidden = !s.mode3;
+  cap.className = `capture c${s.capture}`;
+  cap.textContent = `Capture point: ${['free', 'RED holds', 'BLUE holds', 'contested'][s.capture]}`;
   banner.hidden = s.stage !== 5;
   if (s.stage === 5) {
     const w = s.winner;
@@ -434,6 +582,7 @@ function renderClock(s) {
 function renderControls(s) {
   const connected = !!(state.link && s);
   const st = s?.stage ?? -1;
+  const mode = modeOf(s);
   const enable = {
     1: st === 0,
     2: st === 0 || st === 1,
@@ -443,33 +592,43 @@ function renderControls(s) {
     6: true,
   };
   $$('[data-game]').forEach((b) => { b.disabled = !connected || !enable[b.dataset.game]; });
-  const combat = st === 4 && !s?.paused;
   $('#btnBothYellow').disabled = !connected;
-  robots.forEach((ui, i) => {
-    const r = s?.robots[i];
-    ui.el.classList.toggle('disabled', !connected || !combat || !r?.alive || r?.disconnected);
-    $('.act-shoot', ui.el).disabled = !connected || !combat || !r?.shooterOn;
-    ui.disconnect.textContent = r?.disconnected ? 'Reconnect' : 'Disconnect';
-    $$('button', ui.el).filter((b) => !b.classList.contains('act-shoot')).forEach((b) => { b.disabled = !connected; });
-    $$('.hit-kind input', ui.el).forEach((x) => { x.disabled = !connected; });
-    $('.act-forfeit', ui.el).disabled = !connected || !(st >= 1 && st <= 4);
-    ui.powerIn.disabled = !connected;
+  $$('.mode-seg .seg-btn').forEach((b) => {
+    b.classList.toggle('active', b.dataset.mode === mode);
+    b.setAttribute('aria-checked', b.dataset.mode === mode);
+    b.disabled = !!state.link && (!s || st !== 0);
   });
+  const combat = st === 4 && !s?.paused;
+  for (const ui of panels) {
+    const slot = slotOf(ui.t);
+    const r = s?.robots[slot];
+    ui.title.textContent = `${slotName(slot, mode)} controls`;
+    ui.slotSeg.hidden = mode !== '3v3';
+    $$('.seg-btn', ui.slotSeg).forEach((b) => b.classList.toggle('active', Number(b.dataset.role) === state.role[ui.t]));
+    $$('.v3-only', ui.el).forEach((x) => { x.hidden = mode !== '3v3'; });
+    ui.infRow.hidden = mode !== '3v3' || SLOTS[slot].role !== 'infantry';
+    ui.el.classList.toggle('disabled', !connected || !combat || !r?.alive || r?.disconnected);
+    ui.shoot.disabled = !connected || !combat || !r?.shooterOn;
+    ui.shoot.textContent = r?.cal42 ? 'Fire 42 mm' : 'Fire 17 mm';
+    ui.disconnect.textContent = r?.disconnected ? 'Reconnect' : 'Disconnect';
+    $$('button, select, input', ui.el).filter((b) => b !== ui.shoot && !b.closest('.slot-seg'))
+      .forEach((b) => { b.disabled = !connected || !r?.fielded; });
+    $('.act-forfeit', ui.el).disabled = !connected || !(st >= 1 && st <= 4);
+    ui.infChassis.disabled = ui.infLauncher.disabled = !connected || st > 1;
+    $$('.seg-btn', ui.zoneSeg).forEach((b) => b.classList.toggle('active', Number(b.dataset.zone) === (r?.zone ?? 0)));
+    const n = Math.max(1, Number(ui.buyN.value) || 0);
+    ui.buyCost.textContent = r ? `${r.cal42 ? 10 * n : n} gold (${TEAM[ui.t]} has ${s.teams[ui.t].coins})` : '';
+  }
   const form = $('#configForm');
   $$('input, select, button', form).forEach((x) => { x.disabled = !connected || st !== 0; });
-  if (s && !configDirty && document.activeElement?.form !== form) {
-    const live = {
-      gameType: s.gameType, combatTime: s.combatTime, setupTime: s.setupTime, maxHp: s.robots[0].maxHp,
-      hitDmg: s.hitDmg, heatLimit: s.robots[0].heatLimit, cooling: s.cooling,
-      powerLimit: s.robots[0].powerLimit, speedLimit: s.speedLimit, allowance: null,
-    };
-    form.gameType.value = String(s.gameType);
+  if (s && !state.configDirty && !form.contains(document.activeElement)) {
+    form.combatTime.value = s.combatTime;
+    form.setupTime.value = s.setupTime;
     form.link.value = String(s.link);
-    for (const k of CONFIG_FIELDS) if (live[k] !== null) form[k].value = live[k];
-    if (st === 0) form.allowance.value = s.robots[0].allowance;
-    const match = Object.entries(PRESETS).find(([, p]) => CONFIG_FIELDS.every((k) => live[k] === null || p[k] === live[k])
-      && p.gameType === s.gameType);
-    presetSelect.value = match ? match[0] : 'custom';
+    fillStatsTable(s.robots.map((r) => ({
+      fielded: r.fielded, cal42: r.cal42, maxHp: r.maxHp, heatLimit: r.heatLimit, cooling: r.cooling,
+      powerLimit: r.powerLimit, speedLimit: r.speedLimit, allowance: r.allowance,
+    })));
   }
 }
 
@@ -488,15 +647,15 @@ function renderLinkView() {
   const rs = state.real[CMD.ROBOT_STATUS];
   const ph = state.real[CMD.POWER_HEAT];
   const hp = state.real[CMD.ROBOT_HP];
+  const ev = state.real[CMD.FIELD_EVENT];
+  const buff = state.real[CMD.BUFF];
   const hurt = state.real[CMD.HURT];
   const shot = state.real[CMD.SHOOT];
   const warn = state.real[CMD.REFEREE_WARNING];
   $('#linkRobotName').textContent = rs ? `(robot_id ${rs.robotId})` : '';
-  if (!g && !rs) {
-    field(dl, 'status', state.link ? 'waiting for frames' : 'not connected');
-  }
+  if (!g && !rs) field(dl, 'status', state.link ? 'waiting for frames' : 'not connected');
   if (g) {
-    field(dl, '0x0001 game_progress', `${g.progress} (${STAGES[g.progress] || '?'})`);
+    field(dl, '0x0001 game_type / progress', `${g.gameType} / ${g.progress} (${STAGES[g.progress] || '?'})`);
     field(dl, '0x0001 stage_remain_time', `${g.remain} s`);
     field(dl, '0x0001 SyncTimeStamp', g.timestamp ? new Date(g.timestamp * 1000).toLocaleTimeString() : '0');
   }
@@ -508,11 +667,16 @@ function renderLinkView() {
   }
   if (ph) {
     field(dl, '0x0202 buffer_energy', `${ph.buffer} J`);
-    field(dl, '0x0202 17mm barrel heat', `${ph.heat17}`);
+    field(dl, '0x0202 barrel heat 17 / 42 mm', `${ph.heat17} / ${ph.heat42}`);
   }
-  if (hp) field(dl, '0x0003 ally_3 HP', `${hp.ally3}`);
+  if (hp) field(dl, '0x0003 ally HP 1 / 3 / 7', `${hp.ally1} / ${hp.ally3} / ${hp.ally7}`);
+  if (ev && state.server?.mode3) {
+    field(dl, '0x0101 resupply zone', ev.resupply ? 'occupied' : 'free');
+    field(dl, '0x0101 center point', ['free', 'ours', 'enemy', 'both'][ev.center]);
+  }
+  if (buff && state.server?.mode3) field(dl, '0x0204 recovery / defence', `${buff.recovery} % / ${buff.defence} %`);
   if (hurt) field(dl, '0x0206 last hurt', `armor ${hurt.armor}, ${HURT_REASONS[hurt.reason] || hurt.reason}`);
-  if (shot) field(dl, '0x0207 last shot', `${shot.speed.toFixed(1)} m/s`);
+  if (shot) field(dl, '0x0207 last shot', `${shot.bulletType === 2 ? '42' : '17'} mm at ${shot.speed.toFixed(1)} m/s`);
   if (warn) field(dl, '0x0104 last warning', `level ${warn.level}, robot ${warn.offender}, count ${warn.count}`);
 
   const rows = Object.keys(state.counts).map(Number).sort((a, b) => a - b).map((c) => {
@@ -530,9 +694,7 @@ function renderLinkView() {
 function renderLinkStats() {
   const s = state.server;
   const pill = $('#linkPill');
-  // Connected but nothing decodable after 2.5 s: almost always the wrong port.
-  const silent = state.link instanceof SerialLink && !state.serverAt
-    && performance.now() - state.connectedAt > 2500;
+  const silent = state.link instanceof SerialLink && !state.serverAt && performance.now() - state.connectedAt > 2500;
   $('#portHint').hidden = !silent;
   if (state.link) {
     const stale = !state.serverAt || performance.now() - state.serverAt > 1000;
@@ -554,10 +716,11 @@ function render() {
   if (!state.rawPaused) $('#rawLog').textContent = state.rawLines.slice(-80).join('\n');
 }
 
+buildTeams(state.uiMode);
+fillStatsTable(modeRobots('1v1'));
+
 setInterval(() => {
-  for (const [c, n] of Object.entries(state.counts)) {
-    state.rates[c] = n - (state.lastCounts[c] || 0);
-  }
+  for (const [c, n] of Object.entries(state.counts)) state.rates[c] = n - (state.lastCounts[c] || 0);
   state.lastCounts = { ...state.counts };
 }, 1000);
 
@@ -567,4 +730,4 @@ setInterval(() => {
 })();
 
 // Exposed for debugging from the devtools console.
-window.arcRef = { state, send, commands, ROBOT_IDS };
+window.arcRef = { state, send, commands, HIT_KIND };

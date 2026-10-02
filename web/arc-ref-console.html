@@ -29,6 +29,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 
 html, body {
   margin: 0;
@@ -103,9 +104,64 @@ main { padding: 16px 20px 32px; display: grid; gap: 16px; max-width: 1500px; mar
 .team[data-team="1"] { --c: var(--blue); --c-dim: var(--blue-dim); }
 .team::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--c); }
 .team[data-team="1"]::before { inset: 0 0 0 auto; }
-.team.flash { animation: teamflash .35s ease-out; }
-@keyframes teamflash { from { box-shadow: inset 0 0 0 200px color-mix(in srgb, var(--c) 18%, transparent); } }
-.team.dead { filter: saturate(.25); }
+.unit.flash { animation: teamflash .35s ease-out; }
+@keyframes teamflash { from { box-shadow: inset 0 0 0 400px color-mix(in srgb, var(--c) 18%, transparent); } }
+.unit.dead { filter: saturate(.25); }
+.unit.absent { opacity: .45; }
+.unit.absent .gauges, .unit.absent .chips { display: none; }
+
+/* 3v3: team header with VP, three compact robots */
+.team-stats { margin: 10px 0 4px; }
+.vp { display: flex; align-items: baseline; gap: 6px; font-variant-numeric: tabular-nums; }
+.vp-value { font-size: 34px; font-weight: 800; line-height: 1; }
+.vp-label { color: var(--muted); font-weight: 700; letter-spacing: .1em; font-size: 12px; }
+.vp-bar { margin: 6px 0; }
+.team-nums { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; font-size: 12px; color: var(--muted); }
+.team-nums b { color: var(--text); font-family: var(--mono); font-weight: 600; }
+.units { display: grid; gap: 10px; }
+.team.v3 .units { margin-top: 10px; }
+.unit.compact { border-top: 1px solid var(--line); padding-top: 8px; border-radius: 6px; }
+.unit.compact .hp { margin: 2px 0 4px; }
+.unit.compact .hp-value { font-size: 22px; }
+.unit.compact .hp-bar { height: 8px; }
+.unit.compact .gauges { grid-template-columns: 1fr 1fr 1fr; gap: 4px 10px; margin-top: 6px; }
+.unit.compact .g-buffer, .unit.compact .g-power { display: none; }
+.unit.compact .gauge { grid-template-columns: 1fr; }
+.unit.compact .g-value { text-align: left; }
+.unit.compact .chips { margin-top: 6px; }
+.unit-head { display: flex; align-items: center; gap: 8px; }
+.unit-name { font-weight: 700; color: var(--c); font-size: 13px; }
+
+.mode-tag { font: 700 11px var(--sans); letter-spacing: .14em; padding: 2px 8px; border-radius: 999px; background: var(--panel-2); color: var(--muted); }
+.capture { font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 6px; background: var(--panel-2); color: var(--muted); }
+.capture.c1 { background: var(--red-dim); color: var(--red); }
+.capture.c2 { background: var(--blue-dim); color: var(--blue); }
+.capture.c3 { color: var(--warn); }
+
+/* segmented controls */
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg-btn { font: 600 12px var(--sans); color: var(--muted); background: transparent; border: 0; padding: 5px 10px; cursor: pointer; }
+.seg-btn + .seg-btn { border-left: 1px solid var(--line); }
+.seg-btn.active { background: var(--panel-2); color: var(--text); box-shadow: inset 0 -2px 0 var(--c, var(--blue)); }
+.seg-btn:disabled { opacity: .45; cursor: not-allowed; }
+.mode-seg { margin-top: 10px; }
+.mode-seg .seg-btn { padding: 6px 18px; font-size: 13px; }
+.robot-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.zone-row { display: grid; gap: 4px; }
+.mini-label { font-size: 12px; color: var(--muted); }
+.exchange-row .buy-n { width: 70px; }
+.infantry-row select { flex: 1 1 130px; }
+
+/* robot stats table in the config */
+.stats-wrap { overflow-x: auto; }
+.stats { border-collapse: collapse; font-size: 12px; width: 100%; }
+.stats th { color: var(--muted); font-weight: 500; text-align: left; padding: 2px 3px; }
+.stats td { padding: 2px 3px; }
+.stats input[type="number"] { width: 58px; padding: 3px 4px; }
+.stats input[type="checkbox"] { width: auto; }
+.slot-name { white-space: nowrap; font-weight: 600; }
+.slot-name.t0 { color: var(--red); }
+.slot-name.t1 { color: var(--blue); }
 
 .team-head { display: flex; align-items: center; gap: 8px; }
 .team-name { font-weight: 700; font-size: 15px; color: var(--c); letter-spacing: .02em; }
@@ -178,8 +234,8 @@ input, select {
 }
 input[type="range"] { padding: 0; accent-color: var(--c, var(--blue)); }
 
-.robot[data-robot="0"] { --c: var(--red); }
-.robot[data-robot="1"] { --c: var(--blue); }
+.robot[data-team="0"] { --c: var(--red); }
+.robot[data-team="1"] { --c: var(--blue); }
 .robot-title { color: var(--c); }
 .robot-body { display: grid; grid-template-columns: 130px 1fr; gap: 14px; align-items: center; margin-top: 8px; }
 .robot-actions { display: grid; gap: 10px; }
@@ -210,6 +266,9 @@ input[type="range"] { padding: 0; accent-color: var(--c, var(--blue)); }
 .event-log li:nth-child(odd) { background: #10141b; }
 .event-log .t { color: var(--muted); }
 .event-log .who.r0 { color: var(--red); }
+.event-log .k-capture { color: var(--warn); }
+.event-log .k-respawn, .event-log .k-exchange { color: var(--ok); }
+.event-log .k-immune { color: var(--muted); }
 .event-log .who.r1 { color: var(--blue); }
 .event-log .hpv { color: var(--muted); }
 .event-log .k-yellow { color: var(--warn); }
@@ -268,7 +327,7 @@ input[type="range"] { padding: 0; accent-color: var(--c, var(--blue)); }
 
   <p id="serialWarning" class="banner warn" hidden>
     This browser has no Web Serial. Use Chrome or Edge on desktop, and open the page from
-    <code>http://localhost</code> (see README). Demo mode still works.
+    <code>http://localhost</code> or the single-file <code>arc-ref-console.html</code> (see README). Demo mode still works.
   </p>
 
   <div id="portHint" class="banner warn" hidden>
@@ -286,9 +345,11 @@ input[type="range"] { padding: 0; accent-color: var(--c, var(--blue)); }
     <section class="scoreboard" aria-label="Scoreboard">
       <div class="team" data-team="0"></div>
       <div class="clock">
+        <div id="modeTag" class="mode-tag"></div>
         <div id="stageName" class="stage">Not started</div>
         <div id="clockTime" class="time">--:--</div>
         <div id="clockSub" class="clock-sub">&nbsp;</div>
+        <div id="captureInfo" class="capture" hidden></div>
         <div id="resultBanner" class="result" hidden></div>
         <div id="resultWhy" class="result-why" hidden></div>
       </div>
@@ -298,6 +359,10 @@ input[type="range"] { padding: 0; accent-color: var(--c, var(--blue)); }
     <section class="controls">
       <div class="panel match">
         <h2>Match control</h2>
+        <div class="seg mode-seg" role="radiogroup" aria-label="Game mode">
+          <button class="seg-btn" data-mode="1v1" role="radio">1v1</button>
+          <button class="seg-btn" data-mode="3v3" role="radio">3v3</button>
+        </div>
         <div class="btn-grid">
           <button class="btn primary" data-game="1" title="Starts the setup period countdown, then init, countdown and battle">Start setup period</button>
           <button class="btn" data-game="2" title="Skip the setup period and go straight to the 15 s referee init">Skip to init</button>
@@ -311,37 +376,27 @@ input[type="range"] { padding: 0; accent-color: var(--c, var(--blue)); }
         <details id="configPanel" class="config">
           <summary>Rules config <span class="hint">(only before a match)</span></summary>
           <form id="configForm">
-            <label class="wide">Preset
-              <select name="preset" id="presetSelect"></select>
-            </label>
-            <label>Game type
-              <select name="gameType">
-                <option value="5">1v1 (RMUL 1v1)</option>
-                <option value="4">3v3 (RMUL 3v3)</option>
-              </select>
-            </label>
             <label>Link robot
-              <select name="link">
-                <option value="0">Red 3</option>
-                <option value="1">Blue 103</option>
-              </select>
+              <select name="link"></select>
             </label>
             <label>Setup period (s) <input name="setupTime" type="number" min="0" max="900" value="120"></label>
             <label>Battle (s) <input name="combatTime" type="number" min="5" max="900" value="120"></label>
-            <label>Max HP <input name="maxHp" type="number" min="1" max="5000" value="200"></label>
-            <label>17 mm damage <input name="hitDmg" type="number" min="0" max="1000" value="20"></label>
-            <label>Barrel heat limit <input name="heatLimit" type="number" min="1" max="2000" value="80"></label>
-            <label>Cooling / s <input name="cooling" type="number" min="0" max="2000" value="12"></label>
-            <label>Chassis power limit (W) <input name="powerLimit" type="number" min="1" max="500" value="120"></label>
-            <label>Speed limit (m/s) <input name="speedLimit" type="number" min="1" max="60" value="25"></label>
-            <label>Projectiles <input name="allowance" type="number" min="0" max="5000" value="200"></label>
-            <button class="btn primary" type="submit">Apply to board</button>
+            <div class="wide stats-wrap">
+              <table class="stats">
+                <thead><tr><th>Robot</th><th>On</th><th>42</th><th>HP</th><th>Heat</th><th>Cool/s</th><th>W</th><th>m/s</th><th>Ammo</th></tr></thead>
+                <tbody id="statsBody"></tbody>
+              </table>
+            </div>
+            <div class="wide row">
+              <button class="btn" type="button" id="btnPreset">Reset to ARCC 2026 stats</button>
+              <button class="btn primary" type="submit">Apply to board</button>
+            </div>
           </form>
         </details>
       </div>
 
-      <div class="panel robot" data-robot="0"></div>
-      <div class="panel robot" data-robot="1"></div>
+      <div class="panel robot" data-team="0"></div>
+      <div class="panel robot" data-team="1"></div>
     </section>
 
     <section class="lower">
@@ -375,49 +430,77 @@ input[type="range"] { padding: 0; accent-color: var(--c, var(--blue)); }
     </section>
   </main>
 
-  <template id="teamTemplate">
+  <template id="teamHeadTemplate">
     <div class="team-head">
       <span class="team-name"></span>
       <span class="badge link-badge" hidden>LINK</span>
       <span class="badge state-badge"></span>
     </div>
-    <div class="hp">
-      <span class="hp-value">---</span><span class="hp-max"></span>
-    </div>
-    <div class="bar hp-bar"><div class="fill"></div><div class="ghost"></div></div>
-    <div class="gauges">
-      <div class="gauge">
-        <span class="g-label">Barrel heat</span>
-        <div class="bar small heat-bar"><div class="fill"></div></div>
-        <span class="g-value heat-value"></span>
-      </div>
-      <div class="gauge">
-        <span class="g-label">Buffer energy</span>
-        <div class="bar small buffer-bar"><div class="fill"></div></div>
-        <span class="g-value buffer-value"></span>
-      </div>
-      <div class="gauge">
-        <span class="g-label">Chassis power</span>
-        <span class="g-value power-value"></span>
-      </div>
-      <div class="gauge">
-        <span class="g-label">Projectiles left</span>
-        <span class="g-value ammo-value"></span>
-      </div>
-      <div class="gauge">
-        <span class="g-label">Cards</span>
-        <span class="g-value cards"></span>
+    <div class="team-stats" hidden>
+      <div class="vp"><span class="vp-value">200</span><span class="vp-label">VP</span></div>
+      <div class="bar vp-bar"><div class="fill"></div></div>
+      <div class="team-nums">
+        <span>Gold <b class="coins"></b></span>
+        <span>Damage dealt <b class="dmg"></b></span>
+        <span class="chip hero42"></span>
       </div>
     </div>
-    <div class="chips">
-      <span class="chip chip-shooter"></span>
-      <span class="chip chip-chassis"></span>
-      <span class="chip chip-gimbal"></span>
+    <div class="units"></div>
+  </template>
+
+  <template id="unitTemplate">
+    <div class="unit">
+      <div class="unit-head">
+        <span class="unit-name"></span>
+        <span class="badge link-badge" hidden>LINK</span>
+        <span class="badge state-badge"></span>
+      </div>
+      <div class="hp">
+        <span class="hp-value">---</span><span class="hp-max"></span>
+      </div>
+      <div class="bar hp-bar"><div class="fill"></div><div class="ghost"></div></div>
+      <div class="gauges">
+        <div class="gauge">
+          <span class="g-label">Barrel heat</span>
+          <div class="bar small heat-bar"><div class="fill"></div></div>
+          <span class="g-value heat-value"></span>
+        </div>
+        <div class="gauge g-buffer">
+          <span class="g-label">Buffer energy</span>
+          <div class="bar small buffer-bar"><div class="fill"></div></div>
+          <span class="g-value buffer-value"></span>
+        </div>
+        <div class="gauge g-power">
+          <span class="g-label">Chassis power</span>
+          <span class="g-value power-value"></span>
+        </div>
+        <div class="gauge">
+          <span class="g-label">Projectiles</span>
+          <span class="g-value ammo-value"></span>
+        </div>
+        <div class="gauge">
+          <span class="g-label">Cards</span>
+          <span class="g-value cards"></span>
+        </div>
+      </div>
+      <div class="chips">
+        <span class="chip chip-shooter"></span>
+        <span class="chip chip-chassis"></span>
+        <span class="chip chip-gimbal"></span>
+        <span class="chip chip-special" hidden></span>
+      </div>
     </div>
   </template>
 
   <template id="robotTemplate">
-    <h2 class="robot-title"></h2>
+    <div class="robot-top">
+      <h2 class="robot-title"></h2>
+      <div class="seg slot-seg" role="tablist" hidden>
+        <button class="seg-btn" data-role="0" role="tab">Hero</button>
+        <button class="seg-btn" data-role="1" role="tab">Infantry</button>
+        <button class="seg-btn" data-role="2" role="tab">Sentry</button>
+      </div>
+    </div>
     <div class="robot-body">
       <svg class="armor" viewBox="0 0 120 120" role="group" aria-label="Armor plates, click to register a hit">
         <rect class="chassis" x="30" y="30" width="60" height="60" rx="8"></rect>
@@ -430,7 +513,7 @@ input[type="range"] { padding: 0; accent-color: var(--c, var(--blue)); }
       </svg>
       <div class="robot-actions">
         <div class="row">
-          <button class="btn primary act-shoot">Fire 17 mm</button>
+          <button class="btn primary act-shoot">Fire</button>
           <label class="inline">at <input class="shoot-speed" type="number" step="0.1" min="0" max="60" value="24.0"> m/s</label>
         </div>
         <fieldset class="row hit-kind">
@@ -442,6 +525,29 @@ input[type="range"] { padding: 0; accent-color: var(--c, var(--blue)); }
         <label class="slider">Chassis draw <output class="power-out">0 W</output>
           <input class="power-in" type="range" min="0" max="200" value="0">
         </label>
+        <div class="v3-only zone-row">
+          <span class="mini-label">Robot is in</span>
+          <div class="seg zone-seg">
+            <button class="seg-btn" data-zone="0">Field</button>
+            <button class="seg-btn" data-zone="1">Resupply</button>
+            <button class="seg-btn" data-zone="2">Capture</button>
+          </div>
+        </div>
+        <div class="v3-only row exchange-row">
+          <button class="btn act-buy" title="Exchange gold for projectiles (in the resupply zone during battle)">Buy</button>
+          <input class="buy-n" type="number" min="1" max="500" value="50">
+          <span class="buy-cost hint"></span>
+        </div>
+        <div class="v3-only row infantry-row">
+          <select class="inf-chassis" title="Infantry chassis type (setup period)">
+            <option value="hp">Chassis: HP priority</option>
+            <option value="power">Chassis: Power priority</option>
+          </select>
+          <select class="inf-launcher" title="Infantry launcher type (setup period)">
+            <option value="cooldown">Launcher: Cooldown</option>
+            <option value="burst">Launcher: Burst</option>
+          </select>
+        </div>
         <div class="row">
           <button class="btn warn act-yellow">Yellow card</button>
           <button class="btn danger act-red">Red card</button>
@@ -472,9 +578,11 @@ const CMD = {
   GAME_STATUS: 0x0001,
   GAME_RESULT: 0x0002,
   ROBOT_HP: 0x0003,
+  FIELD_EVENT: 0x0101,
   REFEREE_WARNING: 0x0104,
   ROBOT_STATUS: 0x0201,
   POWER_HEAT: 0x0202,
+  BUFF: 0x0204,
   HURT: 0x0206,
   SHOOT: 0x0207,
   SERVER_STATE: 0xf101,
@@ -488,15 +596,20 @@ const CMD = {
   C_LIFE: 0xf006,
   C_POWER: 0xf007,
   C_TIME: 0xf008,
+  C_ROBOT: 0xf009,
+  C_ZONE: 0xf00a,
+  C_EXCHANGE: 0xf00b,
 };
 
 const CMD_NAMES = {
   0x0001: 'game_status',
   0x0002: 'game_result',
   0x0003: 'ally_robot_HP',
+  0x0101: 'event_data',
   0x0104: 'referee_warning',
   0x0201: 'robot_status',
   0x0202: 'buffer_heat_data',
+  0x0204: 'buff',
   0x0206: 'hurt_data',
   0x0207: 'shoot_data',
   0xf101: 'server_state',
@@ -508,7 +621,7 @@ const GAME_TYPES = { 1: 'RMUC', 2: 'RMUT', 3: 'RMUA', 4: 'RMUL 3v3', 5: 'RMUL 1v
 const EVENT_KINDS = {
   1: 'hit', 2: 'shot', 3: 'locked', 4: 'chassis-cut', 5: 'yellow', 6: 'red', 7: 'forfeit',
   8: 'kill', 9: 'revive', 10: 'disconnect', 11: 'reconnect', 12: 'offline-hp', 13: 'unlocked',
-  14: 'yellow-both',
+  14: 'yellow-both', 15: 'exchange', 16: 'immune', 17: 'respawn', 18: 'capture', 19: 'yellow-team',
 };
 const LOCKS = {
   1: 'barrel heat over limit', 2: 'barrel heat over limit + 100 (rest of round)',
@@ -517,26 +630,56 @@ const LOCKS = {
 const WIN_REASONS = {
   0: '', 1: 'opponent defeated', 2: 'more remaining HP', 3: 'opponent took first damage',
   4: 'more shots fired', 5: 'fired first', 6: 'tie: lighter robot wins (referee decides)', 7: 'forfeit',
+  8: 'opponent reached 0 Victory Points', 9: 'more Victory Points', 10: 'more attack damage dealt',
+  11: 'more total remaining HP',
 };
 const HURT_REASONS = { 0: 'armor hit', 1: 'module offline', 5: 'collision' };
 const GAME = { SETUP: 1, START: 2, PAUSE: 3, RESUME: 4, END: 5, RESET: 6 };
 const PENALTY = { BOTH_YELLOW: 1, YELLOW: 2, RED: 3, FORFEIT: 4 };
 const LIFE = { KILL: 0, REVIVE: 1, DISCONNECT: 2, RECONNECT: 3 };
+const ZONE = { NONE: 0, RESUPPLY: 1, CAPTURE: 2 };
+const MODE = { V1: 5, V3: 4 };
+
+// Six robot slots: team = slot >= 3, role = slot % 3.
+const SLOTS = [
+  { team: 0, role: 'hero', id: 1, name: 'Hero' },
+  { team: 0, role: 'infantry', id: 3, name: 'Infantry' },
+  { team: 0, role: 'sentry', id: 7, name: 'Sentry' },
+  { team: 1, role: 'hero', id: 101, name: 'Hero' },
+  { team: 1, role: 'infantry', id: 103, name: 'Infantry' },
+  { team: 1, role: 'sentry', id: 107, name: 'Sentry' },
+];
 const HIT_KIND = { MM17: 0, COLLISION: 1, MM42: 2 };
 
-// Robot stat presets from the ARCC 2026 Events Manual. The referee core
-// always plays the 1v1 winning rules; 3v3 presets only change the numbers.
-const PRESETS = {
-  '1v1': { label: '1v1 Infantry (ARCC 2026)', gameType: 5, combatTime: 120, setupTime: 120,
-    maxHp: 200, heatLimit: 80, cooling: 12, powerLimit: 120, hitDmg: 20, speedLimit: 25, allowance: 200 },
-  infHp: { label: '3v3 Infantry: HP + Cooldown priority', gameType: 4, combatTime: 300, setupTime: 180,
-    maxHp: 350, heatLimit: 88, cooling: 24, powerLimit: 75, hitDmg: 20, speedLimit: 25, allowance: 500 },
-  infPower: { label: '3v3 Infantry: Power + Burst priority', gameType: 4, combatTime: 300, setupTime: 180,
-    maxHp: 300, heatLimit: 230, cooling: 14, powerLimit: 90, hitDmg: 20, speedLimit: 25, allowance: 500 },
-  sentry: { label: '3v3 Sentry', gameType: 4, combatTime: 300, setupTime: 180,
-    maxHp: 400, heatLimit: 260, cooling: 30, powerLimit: 100, hitDmg: 20, speedLimit: 25, allowance: 750 },
+// Robot stats from the ARCC 2026 Events Manual (tables 3-2, 3-3, 3-4, 4-2).
+const ROBOT_PRESETS = {
+  infantry1v1: { fielded: true, cal42: false, maxHp: 200, heatLimit: 80, cooling: 12, powerLimit: 120, speedLimit: 25, allowance: 200 },
+  hero: { fielded: true, cal42: true, maxHp: 350, heatLimit: 200, cooling: 24, powerLimit: 100, speedLimit: 15, allowance: 0 },
+  sentry: { fielded: true, cal42: false, maxHp: 400, heatLimit: 260, cooling: 30, powerLimit: 100, speedLimit: 25, allowance: 750 },
+  absent: { fielded: false, cal42: false, maxHp: 200, heatLimit: 80, cooling: 12, powerLimit: 120, speedLimit: 25, allowance: 0 },
 };
-const ROBOT_IDS = [3, 103];
+// 3v3 Infantry: the pilot picks a chassis and a launcher type during setup.
+const INFANTRY_CHASSIS = { hp: { label: 'HP priority', maxHp: 350, powerLimit: 75 }, power: { label: 'Power priority', maxHp: 300, powerLimit: 90 } };
+const INFANTRY_LAUNCHER = { cooldown: { label: 'Cooldown priority', heatLimit: 88, cooling: 24 }, burst: { label: 'Burst priority', heatLimit: 230, cooling: 14 } };
+function infantry3v3(chassis = 'hp', launcher = 'cooldown') {
+  const c = INFANTRY_CHASSIS[chassis];
+  const l = INFANTRY_LAUNCHER[launcher];
+  return { fielded: true, cal42: false, maxHp: c.maxHp, heatLimit: l.heatLimit, cooling: l.cooling, powerLimit: c.powerLimit, speedLimit: 25, allowance: 0 };
+}
+const MODES = {
+  '1v1': { gameType: 5, combatTime: 120, setupTime: 120, link: 1 },
+  '3v3': { gameType: 4, combatTime: 300, setupTime: 180, link: 1 },
+};
+function modeRobots(mode, infantry = [{}, {}]) {
+  if (mode === '1v1') {
+    const r = ROBOT_PRESETS;
+    return [r.absent, r.infantry1v1, r.absent, r.absent, r.infantry1v1, r.absent];
+  }
+  const inf = infantry.map((x) => infantry3v3(x.chassis, x.launcher));
+  return [ROBOT_PRESETS.hero, inf[0], ROBOT_PRESETS.sentry, ROBOT_PRESETS.hero, inf[1], ROBOT_PRESETS.sentry];
+}
+
+const ROBOT_IDS = SLOTS.map((x) => x.id);
 
 const CRC8_TABLE = new Uint8Array(256);
 const CRC16_TABLE = new Uint16Array(256);
@@ -632,18 +775,23 @@ class FrameDecoder {
 
 // ----------------------------------------------------------------- payloads
 function robotBlock(v, o) {
-  const f = v.getUint8(o + 19);
+  const f = v.getUint8(o + 23);
+  const f2 = v.getUint8(o + 24);
+  const timer = v.getUint16(o + 28, true);
+  const respawning = !!(f2 & 16);
   return {
     hp: v.getUint16(o, true),
     maxHp: v.getUint16(o + 2, true),
-    heat: v.getUint16(o + 4, true),
+    heat: Math.floor(v.getUint16(o + 4, true) / 10),
     heatLimit: v.getUint16(o + 6, true),
-    buffer: v.getUint16(o + 8, true),
+    buffer: Math.floor(v.getUint16(o + 8, true) / 10),
     power: v.getUint16(o + 10, true),
     powerLimit: v.getUint16(o + 12, true),
     allowance: v.getUint16(o + 14, true),
     shots: v.getUint16(o + 16, true),
-    yellow: v.getUint8(o + 18),
+    cooling: v.getUint16(o + 18, true),
+    speedLimit: v.getUint16(o + 20, true),
+    yellow: v.getUint8(o + 22),
     alive: !!(f & 1),
     redCard: !!(f & 2),
     shooterOn: !!(f & 4),
@@ -652,8 +800,16 @@ function robotBlock(v, o) {
     disconnected: !!(f & 32),
     heatLocked: !!(f & 64),
     speedLocked: !!(f & 128),
-    speedLockS: v.getUint8(o + 20),
-    chassisCutDs: v.getUint8(o + 21),
+    fielded: !!(f2 & 1),
+    cal42: !!(f2 & 2),
+    invincible: !!(f2 & 4),
+    weakened: !!(f2 & 8),
+    respawning,
+    zone: (f2 >> 5) & 3,
+    chassisCutDs: v.getUint8(o + 25),
+    speedLockS: v.getUint16(o + 26, true) === 0xffff ? 255 : Math.ceil(v.getUint16(o + 26, true) / 10),
+    respawnS: respawning ? Math.ceil(timer / 10) : 0,
+    invincibleS: respawning ? 0 : Math.ceil(timer / 10),
   };
 }
 
@@ -673,8 +829,14 @@ function decodePayload(cmd, data) {
       case CMD.ROBOT_HP: {
         const hp = [];
         for (let i = 0; i < 8; i++) hp.push(v.getUint16(i * 2, true));
-        return { ally3: hp[2], all: hp };
+        return { ally1: hp[0], ally3: hp[2], ally7: hp[5], all: hp };
       }
+      case CMD.FIELD_EVENT: {
+        const x = v.getUint32(0, true);
+        return { resupply: !!((x >> 2) & 1), center: (x >> 23) & 3, raw: x };
+      }
+      case CMD.BUFF:
+        return { recovery: data[0], cooling: v.getUint16(1, true), defence: data[3], vulnerability: data[4], attack: v.getUint16(5, true), energy: data[7] };
       case CMD.REFEREE_WARNING:
         return { level: data[0], offender: data[1], count: data[2] };
       case CMD.ROBOT_STATUS:
@@ -696,27 +858,34 @@ function decodePayload(cmd, data) {
         return { armor: data[0] & 0xf, reason: data[0] >> 4 };
       case CMD.SHOOT:
         return { bulletType: data[0], shooter: data[1], freq: data[2], speed: v.getFloat32(3, true) };
-      case CMD.SERVER_STATE:
-        if (data.length < 66) return null;
+      case CMD.SERVER_STATE: {
+        if (data.length < 212) return null;
+        const team = (t) => ({
+          vp: v.getUint16(8 + 8 * t, true),
+          coins: v.getUint16(10 + 8 * t, true),
+          damage: v.getUint16(12 + 8 * t, true),
+          heroLive: !!(data[14 + 8 * t] & 1),
+        });
         return {
           stage: data[0],
           paused: !!(data[1] & 1),
           firstDmg: (data[1] >> 1) & 3,
           firstShot: (data[1] >> 3) & 3,
+          capture: (data[1] >> 5) & 3,
+          mode3: !!(data[1] & 0x80),
           remain: v.getUint16(2, true),
           winner: data[4],
           winReason: data[5],
           link: data[6],
           gameType: data[7],
-          robots: [robotBlock(v, 8), robotBlock(v, 30)],
-          rxOk: v.getUint16(52, true),
-          rxErr: v.getUint16(54, true),
-          combatTime: v.getUint16(56, true),
-          cooling: v.getUint16(58, true),
-          hitDmg: v.getUint16(60, true),
-          setupTime: v.getUint16(62, true),
-          speedLimit: v.getUint16(64, true),
+          teams: [team(0), team(1)],
+          robots: [0, 1, 2, 3, 4, 5].map((r) => robotBlock(v, 24 + 30 * r)),
+          rxOk: v.getUint16(204, true),
+          rxErr: v.getUint16(206, true),
+          combatTime: v.getUint16(208, true),
+          setupTime: v.getUint16(210, true),
         };
+      }
       case CMD.EVENT:
         return { robot: data[0], kind: data[1], detail: data[2], hp: v.getUint16(3, true) };
       default:
@@ -736,27 +905,39 @@ function bytes(n, fill) {
 
 const commands = {
   game: (action) => [CMD.C_GAME, Uint8Array.of(action)],
-  config: (c) => [CMD.C_CONFIG, bytes(20, (v) => {
+  // gameType 5 = 1v1, 4 = 3v3; link = slot whose view the real frames give
+  config: (c) => [CMD.C_CONFIG, bytes(6, (v) => {
     v.setUint8(0, c.gameType);
     v.setUint8(1, c.link);
-    [c.combatTime, c.maxHp, c.heatLimit, c.cooling, c.powerLimit, c.hitDmg,
-      c.setupTime, c.speedLimit, c.allowance].forEach((x, i) => v.setUint16(2 + 2 * i, x, true));
+    v.setUint16(2, c.combatTime, true);
+    v.setUint16(4, c.setupTime, true);
   })],
-  hit: (robot, armor, kind = HIT_KIND.MM17) => [CMD.C_HIT, Uint8Array.of(robot, armor, kind)],
+  robot: (slot, c) => [CMD.C_ROBOT, bytes(15, (v) => {
+    v.setUint8(0, slot);
+    v.setUint8(1, (c.fielded ? 1 : 0) | (c.cal42 ? 2 : 0));
+    [c.maxHp, c.heatLimit, c.cooling, c.powerLimit, c.speedLimit, c.allowance]
+      .forEach((x, i) => v.setUint16(2 + 2 * i, x, true));
+  })],
+  hit: (slot, armor, kind = HIT_KIND.MM17) => [CMD.C_HIT, Uint8Array.of(slot, armor, kind)],
   // speed goes twice: as f32 for 0x0207, and in 0.1 m/s for the fabric's limit check
-  shoot: (robot, freq, speed) => [CMD.C_SHOOT, bytes(8, (v) => {
-    v.setUint8(0, robot);
+  shoot: (slot, freq, speed) => [CMD.C_SHOOT, bytes(8, (v) => {
+    v.setUint8(0, slot);
     v.setUint8(1, freq);
     v.setFloat32(2, speed, true);
     v.setUint16(6, Math.round(speed * 10), true);
   })],
-  penalty: (robot, level) => [CMD.C_PENALTY, Uint8Array.of(robot, level)],
-  life: (robot, action) => [CMD.C_LIFE, Uint8Array.of(robot, action)],
-  power: (robot, watts) => [CMD.C_POWER, bytes(3, (v) => {
-    v.setUint8(0, robot);
+  penalty: (slot, level) => [CMD.C_PENALTY, Uint8Array.of(slot, level)],
+  life: (slot, action) => [CMD.C_LIFE, Uint8Array.of(slot, action)],
+  power: (slot, watts) => [CMD.C_POWER, bytes(3, (v) => {
+    v.setUint8(0, slot);
     v.setUint16(1, watts, true);
   })],
   time: (unix) => [CMD.C_TIME, bytes(4, (v) => v.setUint32(0, unix >>> 0, true))],
+  zone: (slot, zone) => [CMD.C_ZONE, Uint8Array.of(slot, zone)],
+  exchange: (slot, n) => [CMD.C_EXCHANGE, bytes(3, (v) => {
+    v.setUint8(0, slot);
+    v.setUint16(1, n, true);
+  })],
 };
 
 function hex(bytes) {
@@ -844,20 +1025,34 @@ class SerialLink {
 // replay of the RTL testbench ends the same way.
 
 
+const N = 6;
 const ST = { IDLE: 0, PREP: 1, CHECK: 2, COUNT: 3, COMBAT: 4, RESULT: 5 };
 const EV = {
-  HIT: 1, SHOT: 2, LOCK: 3, CHASSIS: 4, YELLOW: 5, RED: 6, FORFEIT: 7, KILL: 8,
-  REVIVE: 9, DISCONNECT: 10, RECONNECT: 11, OFFLINE_HP: 12, UNLOCK: 13, YELLOW_BOTH: 14,
+  HIT: 1, SHOT: 2, LOCK: 3, CHASSIS: 4, YELLOW: 5, RED: 6, FORFEIT: 7, KILL: 8, REVIVE: 9,
+  DISCONNECT: 10, RECONNECT: 11, OFFLINE_HP: 12, UNLOCK: 13, YELLOW_BOTH: 14, EXCHANGE: 15,
+  IMMUNE: 16, RESPAWN: 17, CAPTURE: 18, YELLOW_TEAM: 19,
 };
 const LK = { HEAT: 1, HEAT_ROUND: 2, SPEED15: 3, SPEED20: 4, SPEED_ROUND: 5, AMMO: 6 };
-const WR = { NONE: 0, DEFEAT: 1, HP: 2, FIRST_DMG: 3, SHOTS: 4, FIRST_SHOT: 5, TIE: 6, FORFEIT: 7 };
+const WR = {
+  NONE: 0, DEFEAT: 1, HP: 2, FIRST_DMG: 3, SHOTS: 4, FIRST_SHOT: 5, TIE: 6, FORFEIT: 7,
+  VP_ZERO: 8, VP: 9, DAMAGE: 10, TOTAL_HP: 11,
+};
 const BUFFER_FULL_X10 = 600;
 const LOCK_ROUND = 0xffff;
-const YELLOW_WINDOW = 300;
-const CHASSIS_CUT = 50;
 const div10 = (x) => Math.floor(x / 10);
 const pctOf = (x, p) => Math.floor((x * p + 50) / 100);
-const robotId = (r) => (r ? 103 : 3);
+const satSub = (a, b) => (a > b ? a - b : 0);
+const teamOf = (r) => (r >= 3 ? 1 : 0);
+const roleOf = (r) => r % 3;   // 0 hero, 1 infantry, 2 sentry
+const robotId = (r) => (r >= 3 ? 100 : 0) + [1, 3, 7][r % 3];
+const penaltyHp = (h, ded) => (h === 0 ? 0 : h <= ded ? 1 : h - ded);
+
+function robotConfig(fielded, cal42, maxHp, heatLimit, cooling, powerLimit, speedLimit, allowance) {
+  return {
+    fielded, cal42, maxHp, heatLimit, cooling, powerLimit, speedLimit, allowance,
+    p5: pctOf(maxHp, 5), p15: pctOf(maxHp, 15), p20: pctOf(maxHp, 20), p25: pctOf(maxHp, 25),
+  };
+}
 
 class SimLink {
   constructor() {
@@ -883,36 +1078,75 @@ class SimLink {
     for (const f of this.rx.push(bytes)) {
       this.rxOk++;
       this.runCmd(f.cmd, f.data);
+      this.runPenalties();
     }
     this.rxErr += this.rx.bad - before;
   }
 
   reset() {
-    this.cfg = {
-      combatTime: 120, maxHp: 200, heatLimit: 80, cooling: 12, powerLimit: 120,
-      hitDmg: 20, setupTime: 120, speedLimit: 25, allowance: 200,
-    };
     Object.assign(this, {
-      stage: ST.IDLE, paused: false, remain: 0, gameType: 5, link: 0, unix: 0,
-      sub: 0, t5: 0, t10: 0, c50: 0, c5: 0, c17: 0, seq: 0, rxOk: 0, rxErr: 0,
-      warnL: [0, 0, 0],
+      stage: ST.IDLE, paused: false, remain: 0, gameType: 5, link: 1, unix: 0,
+      combatTime: 120, setupTime: 120, sub: 0, t5: 0, t10: 0, c50: 0, c5: 0, c17: 0,
+      seq: 0, rxOk: 0, rxErr: 0, warnL: [0, 0, 0], penMask: 0, penKind: 0,
     });
-    this.robots = [0, 1].map(() => ({ power: 0 }));
+    this.cfg = Array.from({ length: N }, (_, i) => robotConfig(i === 1 || i === 4, false, 200, 80, 12, 120, 25, 200));
+    this.robots = Array.from({ length: N }, () => ({ power: 0 }));
+    this.teams = [{}, {}];
     this.resetRobots();
   }
 
   resetRobots() {
-    for (const rb of this.robots) {
+    this.robots.forEach((rb, i) => {
+      const c = this.cfg[i];
       Object.assign(rb, {
-        hp: this.cfg.maxHp, heat10: 0, buf10: BUFFER_FULL_X10, ammo: this.cfg.allowance, shots: 0,
-        yellow: 0, yelPct: 0, yelWin: 0, red: false, heatLk: 0, spdLk: 0, chOff: 0, disc: false, discT: 0,
+        hp: c.fielded ? c.maxHp : 0, heat10: 0, buf10: BUFFER_FULL_X10, ammo: c.allowance, shots: 0,
+        yellow: 0, yelK: 0, yelWin: 0, red: false, heatLk: 0, spdLk: 0, chOff: 0, disc: false,
+        secT: 0, zone: 0, respT: 0, defeats: 0, invinc: 0, weak: false,
       });
-    }
-    this.bothYellow = 0;
-    this.firstDmg = 0;
-    this.firstShot = 0;
-    this.winner = 0;
-    this.winReason = WR.NONE;
+    });
+    for (const t of this.teams) Object.assign(t, { vp: 200, coins: 0, dmg: 0, hquiet: 255, hdown: 0 });
+    Object.assign(this, {
+      bonus: [false, false], vpT: 0, capHolder: 0, penMask: 0, bothYellow: 0,
+      firstDmg: 0, firstShot: 0, winner: 0, winReason: WR.NONE,
+    });
+  }
+
+  get mode3() {
+    return this.gameType === 4;
+  }
+
+  get inCombat() {
+    return this.stage === ST.COMBAT && !this.paused;
+  }
+
+  alive(r) {
+    return this.cfg[r].fielded && this.robots[r].hp > 0;
+  }
+
+  heroLive(t) {
+    const tm = this.teams[t];
+    return !(tm.hquiet >= 40 || tm.hdown >= 30 || !this.cfg[3 * t].fielded);
+  }
+
+  flags(r) {
+    const rb = this.robots[r];
+    const al = this.alive(r);
+    const gim = al && !rb.disc;
+    const chs = gim && rb.chOff === 0;
+    const sht = gim && !rb.heatLk && !rb.spdLk && rb.ammo > 0 && !rb.weak;
+    return (al ? 1 : 0) | (rb.red ? 2 : 0) | (sht ? 4 : 0) | (chs ? 8 : 0) | (gim ? 16 : 0)
+      | (rb.disc ? 32 : 0) | (rb.heatLk ? 64 : 0) | (rb.spdLk ? 128 : 0);
+  }
+
+  flags2(r) {
+    const rb = this.robots[r];
+    const c = this.cfg[r];
+    return (c.fielded ? 1 : 0) | (c.cal42 ? 2 : 0) | (rb.invinc ? 4 : 0) | (rb.weak ? 8 : 0)
+      | (rb.respT ? 16 : 0) | (rb.zone << 5);
+  }
+
+  inResupply(t) {
+    return [0, 1, 2].some((k) => this.robots[3 * t + k].zone === 1 && this.alive(3 * t + k));
   }
 
   // ------------------------------------------------------------- outputs
@@ -921,13 +1155,13 @@ class SimLink {
     this.seq = (this.seq + 1) & 0xff;
   }
 
-  event(r, kind, detail, hp) {
+  event(r, kind, detail, value) {
     const p = new Uint8Array(5);
     const v = new DataView(p.buffer);
     v.setUint8(0, r);
     v.setUint8(1, kind);
     v.setUint8(2, detail & 0xff);
-    v.setUint16(3, hp, true);
+    v.setUint16(3, value & 0xffff, true);
     this.send(CMD.EVENT, p);
   }
 
@@ -945,37 +1179,50 @@ class SimLink {
   }
 
   sendHp() {
+    const t = teamOf(this.link);
     const p = new Uint8Array(16);
-    new DataView(p.buffer).setUint16(4, this.robots[this.link].hp, true);
+    const v = new DataView(p.buffer);
+    v.setUint16(0, this.robots[3 * t].hp, true);
+    v.setUint16(4, this.robots[3 * t + 1].hp, true);
+    v.setUint16(10, this.robots[3 * t + 2].hp, true);
     this.send(CMD.ROBOT_HP, p);
   }
 
-  flags(r) {
-    const rb = this.robots[r];
-    const alive = rb.hp > 0;
-    const gimbal = alive && !rb.disc;
-    const chassis = gimbal && rb.chOff === 0;
-    const shooter = gimbal && rb.heatLk === 0 && rb.spdLk === 0 && rb.ammo > 0;
-    return (alive ? 1 : 0) | (rb.red ? 2 : 0) | (shooter ? 4 : 0) | (chassis ? 8 : 0) | (gimbal ? 16 : 0)
-      | (rb.disc ? 32 : 0) | (rb.heatLk ? 64 : 0) | (rb.spdLk ? 128 : 0);
+  capView() {
+    const lt = teamOf(this.link);
+    if (this.capHolder === 3) return 3;
+    if (this.capHolder === 0) return 0;
+    return this.capHolder === lt + 1 ? 1 : 2;
   }
 
-  shooterOn(r) {
-    return !!(this.flags(r) & 4);
+  sendField() {
+    const x = this.mode3 ? ((this.inResupply(teamOf(this.link)) ? 1 : 0) << 2) | (this.capView() << 23) : 0;
+    const p = new Uint8Array(4);
+    new DataView(p.buffer).setUint32(0, x >>> 0, true);
+    this.send(CMD.FIELD_EVENT, p);
+  }
+
+  sendBuff() {
+    const r = this.link;
+    const rb = this.robots[r];
+    const heal = this.mode3 && this.alive(r) && rb.zone === 1;
+    const p = Uint8Array.of(heal ? 25 : 0, 0, 0, rb.invinc ? 100 : 0, 0, 0, 0, 0x80);
+    this.send(CMD.BUFF, p);
   }
 
   sendRobotStatus() {
     const r = this.link;
     const f = this.flags(r);
+    const c = this.cfg[r];
     const p = new Uint8Array(13);
     const v = new DataView(p.buffer);
     v.setUint8(0, robotId(r));
     v.setUint8(1, 1);
     v.setUint16(2, this.robots[r].hp, true);
-    v.setUint16(4, this.cfg.maxHp, true);
-    v.setUint16(6, this.cfg.cooling, true);
-    v.setUint16(8, this.cfg.heatLimit, true);
-    v.setUint16(10, this.cfg.powerLimit, true);
+    v.setUint16(4, c.maxHp, true);
+    v.setUint16(6, c.cooling, true);
+    v.setUint16(8, c.heatLimit, true);
+    v.setUint16(10, c.powerLimit, true);
     v.setUint8(12, ((f >> 4) & 1) | (((f >> 3) & 1) << 1) | (((f >> 2) & 1) << 2));
     this.send(CMD.ROBOT_STATUS, p);
   }
@@ -985,63 +1232,100 @@ class SimLink {
     const p = new Uint8Array(14);
     const v = new DataView(p.buffer);
     v.setUint16(8, div10(rb.buf10), true);
-    v.setUint16(10, div10(rb.heat10), true);
+    v.setUint16(this.cfg[this.link].cal42 ? 12 : 10, div10(rb.heat10), true);
     this.send(CMD.POWER_HEAT, p);
   }
 
   sendServer() {
-    const p = new Uint8Array(66);
+    const p = new Uint8Array(212);
     const v = new DataView(p.buffer);
     v.setUint8(0, this.stage);
-    v.setUint8(1, (this.paused ? 1 : 0) | (this.firstDmg << 1) | (this.firstShot << 3));
+    v.setUint8(1, (this.paused ? 1 : 0) | (this.firstDmg << 1) | (this.firstShot << 3)
+      | (this.capHolder << 5) | (this.mode3 ? 0x80 : 0));
     v.setUint16(2, this.remain, true);
     v.setUint8(4, this.winner);
     v.setUint8(5, this.winReason);
     v.setUint8(6, this.link);
     v.setUint8(7, this.gameType);
-    this.robots.forEach((rb, i) => {
-      const o = 8 + 22 * i;
-      [rb.hp, this.cfg.maxHp, div10(rb.heat10), this.cfg.heatLimit, div10(rb.buf10), rb.power,
-        this.cfg.powerLimit, rb.ammo, rb.shots].forEach((x, k) => v.setUint16(o + 2 * k, x, true));
-      v.setUint8(o + 18, rb.yellow);
-      v.setUint8(o + 19, this.flags(i));
-      v.setUint8(o + 20, rb.spdLk === LOCK_ROUND ? 255 : Math.min(254, div10(rb.spdLk + 9)));
-      v.setUint8(o + 21, rb.chOff);
+    this.teams.forEach((t, i) => {
+      v.setUint16(8 + 8 * i, t.vp, true);
+      v.setUint16(10 + 8 * i, t.coins & 0xffff, true);
+      v.setUint16(12 + 8 * i, t.dmg & 0xffff, true);
+      v.setUint8(14 + 8 * i, this.heroLive(i) ? 1 : 0);
     });
-    [this.rxOk, this.rxErr, this.cfg.combatTime, this.cfg.cooling, this.cfg.hitDmg,
-      this.cfg.setupTime, this.cfg.speedLimit].forEach((x, k) => v.setUint16(52 + 2 * k, x & 0xffff, true));
+    this.robots.forEach((rb, i) => {
+      const o = 24 + 30 * i;
+      const c = this.cfg[i];
+      [rb.hp, c.maxHp, rb.heat10, c.heatLimit, rb.buf10, rb.power, c.powerLimit, rb.ammo, rb.shots,
+        c.cooling, c.speedLimit].forEach((x, k) => v.setUint16(o + 2 * k, x & 0xffff, true));
+      v.setUint8(o + 22, rb.yellow);
+      v.setUint8(o + 23, this.flags(i));
+      v.setUint8(o + 24, this.flags2(i));
+      v.setUint8(o + 25, rb.chOff);
+      v.setUint16(o + 26, rb.spdLk, true);
+      v.setUint16(o + 28, rb.respT ? rb.respT : rb.invinc, true);
+    });
+    [this.rxOk, this.rxErr, this.combatTime, this.setupTime].forEach((x, k) => v.setUint16(204 + 2 * k, x & 0xffff, true));
     this.send(CMD.SERVER_STATE, p);
   }
 
   // --------------------------------------------------------------- rules
-  get inCombat() {
-    return this.stage === ST.COMBAT && !this.paused;
-  }
-
   finish(w, why) {
+    if (this.stage === ST.RESULT) return;
     Object.assign(this, { stage: ST.RESULT, remain: 0, paused: false, winner: w, winReason: why });
     this.send(CMD.GAME_RESULT, Uint8Array.of(w));
     this.sendStatus();
   }
 
-  setHp(r, nh) {
-    const wasCombat = this.stage === ST.COMBAT;
-    if (this.inCombat && this.firstDmg === 0) this.firstDmg = r ? 2 : 1;
-    this.robots[r].hp = nh;
-    if (wasCombat && nh === 0) this.finish(r ? 1 : 2, WR.DEFEAT);
+  loseVp(t, n) {
+    const v = satSub(this.teams[t].vp, n);
+    this.teams[t].vp = v;
+    if (v === 0 && this.stage === ST.COMBAT) this.finish(t ? 1 : 2, WR.VP_ZERO);
+  }
+
+  setHp(r, nh, attack, eject = false) {
+    const rb = this.robots[r];
+    const t = teamOf(r);
+    const old = rb.hp;
+    if (attack && nh < old) this.teams[t ^ 1].dmg += old - nh;
+    if (this.inCombat && this.firstDmg === 0 && !this.mode3) this.firstDmg = t ? 2 : 1;
+    rb.hp = nh;
+    if (this.stage === ST.COMBAT && nh === 0 && old !== 0) {
+      if (!this.mode3) {
+        this.finish(t ? 1 : 2, WR.DEFEAT);
+      } else {
+        rb.heat10 = 0;
+        rb.buf10 = BUFFER_FULL_X10;
+        if (rb.heatLk === 1) rb.heatLk = 0;
+        rb.invinc = 0;
+        rb.weak = false;
+        if (!rb.red && !eject) rb.respT = 50 * (rb.defeats + 1);
+        rb.defeats++;
+        this.loseVp(t, 20);
+      }
+    }
   }
 
   warn(r, level, id, count) {
-    if (r === this.link) {
+    if (teamOf(r) === teamOf(this.link)) {
       this.warnL = [level, id, count & 0xff];
       this.sendWarn();
     }
   }
 
   judge() {
-    const [a, b] = this.robots;
+    const rb = this.robots;
+    if (this.mode3) {
+      const [a, b] = this.teams;
+      const th = (t) => [0, 1, 2].reduce((s, k) => s + (this.cfg[3 * t + k].fielded ? rb[3 * t + k].hp : 0), 0);
+      if (a.vp !== b.vp) return [a.vp > b.vp ? 1 : 2, WR.VP];
+      if (a.dmg !== b.dmg) return [a.dmg > b.dmg ? 1 : 2, WR.DAMAGE];
+      if (th(0) !== th(1)) return [th(0) > th(1) ? 1 : 2, WR.TOTAL_HP];
+      return [0, WR.TIE];
+    }
+    const [a, b] = [rb[1], rb[4]];
     if (a.hp !== b.hp) return [a.hp > b.hp ? 1 : 2, WR.HP];
-    if (a.hp !== this.cfg.maxHp && this.firstDmg) return [this.firstDmg === 1 ? 2 : 1, WR.FIRST_DMG];
+    if (a.hp !== this.cfg[1].maxHp && this.firstDmg) return [this.firstDmg === 1 ? 2 : 1, WR.FIRST_DMG];
     if (a.shots !== b.shots) return [a.shots > b.shots ? 1 : 2, WR.SHOTS];
     if (this.firstShot) return [this.firstShot, WR.FIRST_SHOT];
     return [0, WR.TIE];
@@ -1049,50 +1333,71 @@ class SimLink {
 
   hit(r, armor, kind) {
     const rb = this.robots[r];
-    if (!(this.inCombat && rb.hp > 0 && !rb.disc)) return;
-    const dmg = kind === 1 ? 2 : kind === 2 ? 200 : this.cfg.hitDmg;
-    const nh = rb.hp > dmg ? rb.hp - dmg : 0;
-    const detail = (kind === 1 ? 0x40 : 0) | (kind === 2 ? 0x20 : 0) | (armor & 0xf);
+    const t = teamOf(r);
+    if (!(this.inCombat && this.alive(r) && !rb.disc && !(this.mode3 && rb.invinc))) return;
+    if (kind === 2 && this.mode3 && !this.heroLive(t ^ 1)) {
+      this.event(r, EV.IMMUNE, armor, rb.hp);
+      return;
+    }
+    const d = kind === 1 ? 2 : kind === 2 ? 200 : 20;
+    const nh = satSub(rb.hp, d);
     if (r === this.link) this.send(CMD.HURT, Uint8Array.of(((kind === 1 ? 5 : 0) << 4) | (armor & 0xf)));
-    this.event(r, EV.HIT, detail, nh);
-    this.setHp(r, nh);
-  }
-
-  penaltyHp(h, ded) {
-    return h === 0 ? 0 : h <= ded ? 1 : h - ded;
+    this.event(r, EV.HIT, (kind === 1 ? 0x40 : 0) | (kind === 2 ? 0x20 : 0) | (armor & 0xf), nh);
+    this.setHp(r, nh, kind !== 1);
   }
 
   yellowCard(r) {
     const rb = this.robots[r];
+    const c = this.cfg[r];
+    const t = teamOf(r);
     const cnt = (rb.yellow + 1) & 0xff;
-    const pct = Math.min(200, rb.yelWin ? rb.yelPct * 2 : 15);
+    const k = rb.yelWin ? Math.min(rb.yelK + 1, 3) : 0;
     rb.yellow = cnt;
-    rb.yelPct = pct;
-    rb.yelWin = YELLOW_WINDOW;
+    rb.yelK = k;
+    rb.yelWin = 300;
     this.warn(r, 2, robotId(r), cnt);
     if (cnt >= 3) {
       rb.red = true;
       this.event(r, EV.YELLOW, cnt, 0);
       this.event(r, EV.RED, 1, 0);
-      this.setHp(r, 0);
+      this.setHp(r, 0, true, true);
     } else {
-      const nh = this.penaltyHp(rb.hp, pctOf(this.cfg.maxHp, pct));
+      const nh = penaltyHp(rb.hp, (c.p15 << k) & 0xffff);
       this.event(r, EV.YELLOW, cnt, nh);
-      if (nh !== rb.hp) this.setHp(r, nh);
+      if (nh !== rb.hp) this.setHp(r, nh, true);
+      if (this.mode3 && roleOf(r) === 2) rb.chOff = 20;
+    }
+    if (this.mode3) {
+      this.penKind = EV.YELLOW_TEAM;
+      this.penMask = (t ? 0b111000 : 0b000111) & ~(1 << r);
+    }
+  }
+
+  // 5 % penalties to several robots (one per cycle in the fabric)
+  runPenalties() {
+    for (let i = 0; i < N && this.penMask; i++) {
+      if (!(this.penMask & (1 << i))) continue;
+      this.penMask &= ~(1 << i);
+      if (!this.alive(i)) continue;
+      const nh = penaltyHp(this.robots[i].hp, this.cfg[i].p5);
+      this.event(i, this.penKind, this.penKind === EV.YELLOW_BOTH ? this.bothYellow : 0, nh);
+      this.setHp(i, nh, this.penKind === EV.YELLOW_TEAM);
     }
   }
 
   runCmd(cmd, d) {
     const v = new DataView(d.buffer, d.byteOffset, d.byteLength);
-    const r = (d[0] ?? 0) & 1;
+    const r = Math.min(5, (d[0] ?? 0) & 7);
+    const t = teamOf(r);
     const a = d[1] ?? 0;
     const rb = this.robots[r];
+    const c = this.cfg[r];
     switch (cmd) {
       case CMD.C_GAME:
         switch (d[0]) {
           case 1:
             if (this.stage === ST.IDLE) {
-              Object.assign(this, { stage: ST.PREP, remain: this.cfg.setupTime, sub: 0, paused: false });
+              Object.assign(this, { stage: ST.PREP, remain: this.setupTime, sub: 0, paused: false });
               this.sendStatus();
             }
             break;
@@ -1123,12 +1428,20 @@ class SimLink {
         }
         break;
       case CMD.C_CONFIG:
-        if (this.stage === ST.IDLE && d.length >= 20) {
+        if (this.stage === ST.IDLE && d.length >= 6) {
           this.gameType = d[0] & 0xf;
-          this.link = d[1] & 1;
-          const k = ['combatTime', 'maxHp', 'heatLimit', 'cooling', 'powerLimit', 'hitDmg', 'setupTime', 'speedLimit', 'allowance'];
-          k.forEach((name, i) => { this.cfg[name] = v.getUint16(2 + 2 * i, true); });
-          for (const x of this.robots) { x.hp = this.cfg.maxHp; x.ammo = this.cfg.allowance; }
+          this.link = Math.min(5, d[1] & 7);
+          this.combatTime = v.getUint16(2, true);
+          this.setupTime = v.getUint16(4, true);
+          this.sendStatus();
+        }
+        break;
+      case CMD.C_ROBOT:
+        if ((this.stage === ST.IDLE || this.stage === ST.PREP) && d.length >= 15) {
+          const g = (k) => v.getUint16(2 + 2 * k, true);
+          this.cfg[r] = robotConfig(!!(a & 1), !!(a & 2), g(0), g(1), g(2), g(3), g(4), g(5));
+          rb.hp = this.cfg[r].fielded ? this.cfg[r].maxHp : 0;
+          rb.ammo = this.cfg[r].allowance;
           this.sendStatus();
         }
         break;
@@ -1136,25 +1449,32 @@ class SimLink {
         this.hit(r, a & 0xf, d.length >= 3 ? d[2] & 3 : 0);
         break;
       case CMD.C_SHOOT:
-        if (this.inCombat && this.shooterOn(r)) {
-          rb.heat10 = Math.min(0xffff, rb.heat10 + 100);
+        if (this.inCombat && (this.flags(r) & 4)) {
+          rb.heat10 = Math.min(0xffff, rb.heat10 + (c.cal42 ? 1000 : 100));
           rb.ammo--;
           rb.shots++;
-          if (!this.firstShot) this.firstShot = r ? 2 : 1;
-          this.event(r, EV.SHOT, a, rb.hp);
+          if (!this.firstShot && !this.mode3) this.firstShot = t ? 2 : 1;
+          if (c.cal42 && roleOf(r) === 0) this.teams[t].hquiet = 0;
+          this.event(r, EV.SHOT, a, rb.ammo);
           const sp = d.length >= 8 ? v.getUint16(6, true) : 0;
-          const lim10 = this.cfg.speedLimit * 10;
+          const lim10 = c.speedLimit * 10;
           if (sp > lim10) {
-            const over = sp - lim10;
-            const [lk, lkd] = over < 50 ? [150, LK.SPEED15] : over < 100 ? [200, LK.SPEED20] : [LOCK_ROUND, LK.SPEED_ROUND];
-            if (rb.spdLk !== LOCK_ROUND && lk > rb.spdLk) rb.spdLk = lk;
-            this.event(r, EV.LOCK, lkd, rb.hp);
+            let lk;
+            if (c.cal42) {
+              lk = sp <= lim10 + c.speedLimit ? [150, LK.SPEED15] : sp <= lim10 + 2 * c.speedLimit ? [200, LK.SPEED20] : [LOCK_ROUND, LK.SPEED_ROUND];
+            } else {
+              lk = sp - lim10 < 50 ? [150, LK.SPEED15] : sp - lim10 < 100 ? [200, LK.SPEED20] : [LOCK_ROUND, LK.SPEED_ROUND];
+            }
+            if (rb.spdLk !== LOCK_ROUND && lk[0] > rb.spdLk) rb.spdLk = lk[0];
+            this.event(r, EV.LOCK, lk[1], rb.hp);
           } else if (rb.ammo === 0) {
             this.event(r, EV.LOCK, LK.AMMO, rb.hp);
           }
           if (r === this.link) {
             const p = new Uint8Array(7);
-            p[0] = 1; p[1] = 1; p[2] = a;
+            p[0] = c.cal42 ? 2 : 1;
+            p[1] = c.cal42 ? 3 : 1;
+            p[2] = a;
             p.set(d.slice(2, 6), 3);
             this.send(CMD.SHOOT, p);
           }
@@ -1163,10 +1483,8 @@ class SimLink {
       case CMD.C_PENALTY:
         if (a === 1) {
           this.bothYellow = (this.bothYellow + 1) & 0xff;
-          this.robots.forEach((x, i) => {
-            x.hp = this.penaltyHp(x.hp, pctOf(this.cfg.maxHp, 5));
-            this.event(i, EV.YELLOW_BOTH, this.bothYellow, x.hp);
-          });
+          this.penKind = EV.YELLOW_BOTH;
+          this.penMask = 0b111111;
           this.warn(this.link, 1, 0, this.bothYellow);
         } else if (a === 2) {
           this.yellowCard(r);
@@ -1174,24 +1492,29 @@ class SimLink {
           rb.red = true;
           this.event(r, EV.RED, 0, 0);
           this.warn(r, 3, robotId(r), 1);
-          this.setHp(r, 0);
+          this.setHp(r, 0, true, true);
         } else if (a === 4 && this.stage >= ST.PREP && this.stage <= ST.COMBAT) {
-          if (this.stage !== ST.COMBAT) { rb.hp = 0; this.robots[r ^ 1].hp = this.cfg.maxHp; }
+          if (this.mode3) {
+            this.teams[t].vp = 0;
+          } else if (this.stage !== ST.COMBAT) {
+            rb.hp = 0;
+            this.robots[t ? 1 : 4].hp = this.cfg[t ? 1 : 4].maxHp;
+          }
           this.event(r, EV.FORFEIT, 0, rb.hp);
           this.warn(r, 4, 0, 1);
-          this.finish(r ? 1 : 2, WR.FORFEIT);
+          this.finish(t ? 1 : 2, WR.FORFEIT);
         }
         break;
       case CMD.C_LIFE:
-        if (a === 0) {
+        if (a === 0 && c.fielded) {
           this.event(r, EV.KILL, 0, 0);
-          this.setHp(r, 0);
-        } else if (a === 1) {
-          Object.assign(rb, { hp: this.cfg.maxHp, heat10: 0, red: false, heatLk: 0, spdLk: 0, disc: false });
+          this.setHp(r, 0, false);
+        } else if (a === 1 && c.fielded) {
+          Object.assign(rb, { hp: c.maxHp, heat10: 0, red: false, heatLk: 0, spdLk: 0, disc: false, respT: 0, weak: false, invinc: 0 });
           this.event(r, EV.REVIVE, 0, rb.hp);
-        } else if (a === 2 && !rb.disc) {
+        } else if (a === 2 && c.fielded && !rb.disc) {
           rb.disc = true;
-          rb.discT = 0;
+          rb.secT = 0;
           this.event(r, EV.DISCONNECT, 0, rb.hp);
         } else if (a === 3 && rb.disc) {
           rb.disc = false;
@@ -1204,15 +1527,46 @@ class SimLink {
       case CMD.C_TIME:
         this.unix = v.getUint32(0, true);
         break;
+      case CMD.C_ZONE:
+        rb.zone = a & 3;
+        if (this.mode3 && (a & 3) === 1 && this.alive(r)) {
+          rb.weak = false;
+          rb.invinc = 0;
+        }
+        break;
+      case CMD.C_EXCHANGE: {
+        const n = d.length >= 3 ? v.getUint16(1, true) : 0;
+        const cost = c.cal42 ? 10 * n : n;
+        const tm = this.teams[t];
+        if (this.mode3 && this.inCombat && this.alive(r) && roleOf(r) !== 2 && rb.zone === 1 && n && tm.coins >= cost) {
+          tm.coins -= cost;
+          rb.ammo += n;
+          this.event(r, EV.EXCHANGE, 0, rb.ammo);
+        } else {
+          this.event(r, EV.EXCHANGE, 1, rb.ammo);
+        }
+        break;
+      }
       default:
     }
+  }
+
+  giveCoins(n) {
+    for (const t of this.teams) t.coins += n;
   }
 
   stageStep() {
     if (this.paused || this.stage < ST.PREP || this.stage > ST.COMBAT) return;
     if (this.sub !== 9) { this.sub++; return; }
     this.sub = 0;
-    if (this.remain > 1) { this.remain--; return; }
+    if (this.remain > 1) {
+      if (this.stage === ST.COMBAT && this.mode3) {
+        if (this.remain === 240 || this.remain === 180) this.giveCoins(200);
+        if (this.remain === 120 || this.remain === 60) this.giveCoins(300);
+      }
+      this.remain--;
+      return;
+    }
     if (this.stage === ST.PREP) {
       Object.assign(this, { stage: ST.CHECK, remain: 15 });
       this.resetRobots();
@@ -1221,7 +1575,8 @@ class SimLink {
       Object.assign(this, { stage: ST.COUNT, remain: 5 });
       this.sendStatus();
     } else if (this.stage === ST.COUNT) {
-      Object.assign(this, { stage: ST.COMBAT, remain: this.cfg.combatTime });
+      Object.assign(this, { stage: ST.COMBAT, remain: this.combatTime });
+      if (this.mode3) this.giveCoins(200);
       this.sendStatus();
     } else {
       this.finish(...this.judge());
@@ -1231,25 +1586,28 @@ class SimLink {
   heatStep(r) {
     if (this.paused) return;
     const rb = this.robots[r];
+    const c = this.cfg[r];
     const h = rb.heat10;
-    const alive = rb.hp > 0;
-    if (this.inCombat && alive && rb.heatLk !== 2 && h > (this.cfg.heatLimit + 100) * 10) {
+    const lim10 = c.heatLimit * 10;
+    const rnd10 = lim10 + (c.cal42 ? 2000 : 1000);
+    const al = this.alive(r);
+    if (this.inCombat && al && rb.heatLk !== 2 && h > rnd10) {
       rb.heatLk = 2;
       this.event(r, EV.LOCK, LK.HEAT_ROUND, rb.hp);
-    } else if (this.inCombat && alive && rb.heatLk === 0 && h > this.cfg.heatLimit * 10) {
+    } else if (this.inCombat && al && rb.heatLk === 0 && h > lim10) {
       rb.heatLk = 1;
       this.event(r, EV.LOCK, LK.HEAT, rb.hp);
-    } else if (rb.heatLk === 1 && h <= this.cfg.cooling) {
+    } else if (rb.heatLk === 1 && h <= c.cooling) {
       rb.heatLk = 0;
       this.event(r, EV.UNLOCK, LK.HEAT, rb.hp);
     }
-    rb.heat10 = h > this.cfg.cooling ? h - this.cfg.cooling : 0;
+    rb.heat10 = satSub(h, c.cooling);
   }
 
   powerStep(r) {
     const rb = this.robots[r];
-    const lim = this.cfg.powerLimit;
-    if (this.inCombat && rb.hp > 0 && !rb.disc) {
+    const lim = this.cfg[r].powerLimit;
+    if (this.inCombat && this.alive(r) && !rb.disc) {
       const p = rb.chOff ? 0 : rb.power;
       if (rb.chOff) rb.chOff--;
       if (p > lim) {
@@ -1257,13 +1615,13 @@ class SimLink {
         if (rb.buf10 > d) rb.buf10 -= d;
         else {
           rb.buf10 = 0;
-          rb.chOff = CHASSIS_CUT;
+          rb.chOff = 50;
           this.event(r, EV.CHASSIS, 0, rb.hp);
         }
       } else {
         rb.buf10 = Math.min(BUFFER_FULL_X10, rb.buf10 + (lim - p));
       }
-    } else if (!this.paused) {
+    } else if (!this.paused && !this.inCombat) {
       rb.buf10 = BUFFER_FULL_X10;
       rb.chOff = 0;
     }
@@ -1272,23 +1630,79 @@ class SimLink {
   timerStep(r) {
     if (!this.inCombat) return;
     const rb = this.robots[r];
+    const c = this.cfg[r];
+    const wasAlive = this.alive(r);
+    const tick = rb.secT === 9;
     if (rb.yelWin) rb.yelWin--;
+    if (rb.invinc) rb.invinc--;
     if (rb.spdLk === 1) {
       rb.spdLk = 0;
       this.event(r, EV.UNLOCK, LK.SPEED15, rb.hp);
-    } else if (rb.spdLk !== 0 && rb.spdLk !== LOCK_ROUND) {
+    } else if (rb.spdLk && rb.spdLk !== LOCK_ROUND) {
       rb.spdLk--;
     }
-    if (rb.disc && rb.hp > 0) {
-      if (rb.discT === 9) {
-        rb.discT = 0;
-        const ded = pctOf(this.cfg.maxHp, 5);
-        const nh = rb.hp > ded ? rb.hp - ded : 0;
-        this.event(r, EV.OFFLINE_HP, 0, nh);
-        this.setHp(r, nh);
-      } else {
-        rb.discT++;
+    if (rb.respT && !rb.disc) {
+      if (rb.respT === 1) {
+        rb.hp = c.p20;
+        rb.invinc = 300;
+        rb.weak = true;
+        this.event(r, EV.RESPAWN, rb.defeats, c.p20);
       }
+      rb.respT--;
+    }
+    rb.secT = tick ? 0 : rb.secT + 1;
+    if (tick && wasAlive) {
+      if (rb.disc) {
+        const nh = satSub(rb.hp, c.p5);
+        this.event(r, EV.OFFLINE_HP, 0, nh);
+        this.setHp(r, nh, false);
+      } else if (this.mode3 && rb.zone === 1) {
+        rb.hp = Math.min(c.maxHp, rb.hp + c.p25);
+        rb.weak = false;
+        rb.invinc = 0;
+      }
+    }
+  }
+
+  teamStep() {
+    if (!(this.inCombat && this.mode3)) return;
+    this.teams.forEach((tm, i) => {
+      if (tm.hquiet !== 255) tm.hquiet++;
+      const hero = this.robots[3 * i];
+      if (this.cfg[3 * i].fielded && (hero.hp === 0 || hero.disc)) tm.hdown = Math.min(255, tm.hdown + 1);
+      else tm.hdown = 0;
+    });
+    const pres = [0, 1].map((t) => [0, 1, 2].some((k) => {
+      const s = 3 * t + k;
+      const rb = this.robots[s];
+      return this.alive(s) && !rb.disc && !rb.weak && rb.zone === 2;
+    }));
+    let h;
+    if ((this.capHolder === 1 && pres[0]) || (this.capHolder === 2 && pres[1])) h = this.capHolder;
+    else if (pres[0] && !pres[1]) h = 1;
+    else if (pres[1] && !pres[0]) h = 2;
+    else if (pres[0] && pres[1]) h = 3;
+    else h = 0;
+    if (h !== this.capHolder) {
+      this.capHolder = h;
+      this.event(0, EV.CAPTURE, h, 0);
+    }
+    const [v0, v1] = [this.teams[0].vp, this.teams[1].vp];
+    if (this.vpT === 9) {
+      this.vpT = 0;
+      if (h === 1) this.loseVp(1, 1);
+      if (h === 2) this.loseVp(0, 1);
+    } else {
+      this.vpT++;
+    }
+    const gap = Math.abs(v0 - v1);
+    const lower = v0 < v1 ? 0 : 1;
+    if (gap >= 70 && !this.bonus[0]) {
+      this.bonus[0] = true;
+      this.teams[lower].coins += 200;
+    } else if (gap >= 140 && !this.bonus[1]) {
+      this.bonus[1] = true;
+      this.teams[lower].coins += 200;
     }
   }
 
@@ -1297,20 +1711,25 @@ class SimLink {
       this.t5 = 0;
       if (this.t10 === 9) { this.t10 = 0; this.unix = (this.unix + 1) >>> 0; } else this.t10++;
       this.stageStep();
-      for (let r = 0; r < 2; r++) {
+      for (let r = 0; r < N; r++) {
+        if (!this.cfg[r].fielded) continue;
         this.heatStep(r);
         this.powerStep(r);
         this.timerStep(r);
       }
+      this.teamStep();
+      this.runPenalties();
     } else {
       this.t5++;
     }
     // Same periodic schedule as arc_frame_gen.
     if (this.c50 === 0) this.sendStatus();
+    if (this.c50 === 10) this.sendField();
     if (this.c50 === 25) this.sendWarn();
     if (this.c5 === 0) this.sendRobotStatus();
     if (this.c5 === 1) this.sendPowerHeat();
     if (this.c17 === 0) this.sendHp();
+    if (this.c17 === 8) this.sendBuff();
     if (this.c5 === 3) this.sendServer();
     this.c50 = this.c50 === 49 ? 0 : this.c50 + 1;
     this.c5 = this.c5 === 4 ? 0 : this.c5 + 1;
@@ -1322,9 +1741,8 @@ class SimLink {
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
-const TEAM_NAMES = ['RED 3', 'BLUE 103'];
-const CONFIG_FIELDS = ['combatTime', 'setupTime', 'maxHp', 'hitDmg', 'heatLimit', 'cooling',
-  'powerLimit', 'speedLimit', 'allowance'];
+const TEAM = ['RED', 'BLUE'];
+const STAT_FIELDS = ['maxHp', 'heatLimit', 'cooling', 'powerLimit', 'speedLimit', 'allowance'];
 
 const state = {
   link: null,
@@ -1333,128 +1751,239 @@ const state = {
   server: null,        // latest 0xF101
   serverAt: 0,
   real: {},            // latest decoded real frame per cmd_id
-  counts: {},          // frames per cmd_id since connect
-  rates: {},           // frames per second, refreshed every second
+  counts: {},
+  rates: {},
   lastCounts: {},
   rxBytes: 0,
   txBytes: 0,
   rawPaused: false,
   rawLines: [],
   boardText: '',
-  lastHp: [null, null],
   writeChain: Promise.resolve(),
+  uiMode: '1v1',       // used until the board reports its mode
+  role: [1, 1],        // robot each control panel drives (0 hero, 1 infantry, 2 sentry)
+  layout: null,
+  lastLog: null,
+  configDirty: false,
 };
 
-// ------------------------------------------------------------ build DOM
-const teams = $$('.team').map((el) => {
-  el.append($('#teamTemplate').content.cloneNode(true));
-  const r = Number(el.dataset.team);
-  $('.team-name', el).textContent = `${TEAM_NAMES[r]} · INFANTRY`;
-  return {
-    el,
-    linkBadge: $('.link-badge', el),
-    stateBadge: $('.state-badge', el),
-    hpValue: $('.hp-value', el),
-    hpMax: $('.hp-max', el),
-    hpFill: $('.hp-bar .fill', el),
-    hpGhost: $('.hp-bar .ghost', el),
-    heatBar: $('.heat-bar', el),
-    heatFill: $('.heat-bar .fill', el),
-    heatValue: $('.heat-value', el),
-    bufferFill: $('.buffer-bar .fill', el),
-    bufferValue: $('.buffer-value', el),
-    powerValue: $('.power-value', el),
-    ammoValue: $('.ammo-value', el),
-    cards: $('.cards', el),
-    chipShooter: $('.chip-shooter', el),
-    chipChassis: $('.chip-chassis', el),
-    chipGimbal: $('.chip-gimbal', el),
-  };
-});
+const modeOf = (s) => (s ? (s.mode3 ? '3v3' : '1v1') : state.uiMode);
+const slotOf = (t) => (modeOf(state.server) === '1v1' ? 3 * t + 1 : 3 * t + state.role[t]);
+function slotName(r, mode = modeOf(state.server)) {
+  const x = SLOTS[r];
+  return mode === '1v1' ? `${TEAM[x.team]} ${x.id}` : `${TEAM[x.team]} ${x.name}`;
+}
 
-const robots = $$('.panel.robot').map((el) => {
+// ------------------------------------------------------------ team cards
+const teamEls = $$('.team');
+let teams = [];
+
+function buildTeams(mode) {
+  state.layout = mode;
+  teams = teamEls.map((el) => {
+    const t = Number(el.dataset.team);
+    el.replaceChildren($('#teamHeadTemplate').content.cloneNode(true));
+    el.classList.toggle('v3', mode === '3v3');
+    $('.team-name', el).textContent = mode === '1v1' ? `${TEAM[t]} ${SLOTS[3 * t + 1].id} · INFANTRY` : `${TEAM[t]} TEAM`;
+    $('.team-stats', el).hidden = mode !== '3v3';
+    $('.team-head .state-badge', el).hidden = mode === '3v3';
+    const slots = mode === '1v1' ? [3 * t + 1] : [3 * t, 3 * t + 1, 3 * t + 2];
+    const units = slots.map((slot) => {
+      const u = $('#unitTemplate').content.firstElementChild.cloneNode(true);
+      $('.units', el).append(u);
+      $('.unit-head', u).hidden = mode === '1v1';
+      $('.unit-name', u).textContent = `${SLOTS[slot].name} ${SLOTS[slot].id}`;
+      u.classList.toggle('compact', mode === '3v3');
+      return {
+        slot, el: u,
+        link: mode === '1v1' ? $('.team-head .link-badge', el) : $('.link-badge', u),
+        badge: mode === '1v1' ? $('.team-head .state-badge', el) : $('.unit-head .state-badge', u),
+        hpValue: $('.hp-value', u), hpMax: $('.hp-max', u),
+        hpFill: $('.hp-bar .fill', u), hpGhost: $('.hp-bar .ghost', u),
+        heatBar: $('.heat-bar', u), heatFill: $('.heat-bar .fill', u), heatValue: $('.heat-value', u),
+        bufferFill: $('.buffer-bar .fill', u), bufferValue: $('.buffer-value', u),
+        powerValue: $('.power-value', u), ammoValue: $('.ammo-value', u), cards: $('.cards', u),
+        chipShooter: $('.chip-shooter', u), chipChassis: $('.chip-chassis', u),
+        chipGimbal: $('.chip-gimbal', u), chipSpecial: $('.chip-special', u),
+      };
+    });
+    return {
+      el, t, units,
+      vpValue: $('.vp-value', el), vpFill: $('.vp-bar .fill', el),
+      coins: $('.coins', el), dmg: $('.dmg', el), hero42: $('.hero42', el),
+    };
+  });
+  buildLinkOptions(mode);
+}
+
+// ------------------------------------------------------------ controls
+const panels = $$('.panel.robot').map((el) => {
+  const t = Number(el.dataset.team);
   el.append($('#robotTemplate').content.cloneNode(true));
-  const r = Number(el.dataset.robot);
-  $('.robot-title', el).textContent = `${TEAM_NAMES[r]} controls`;
   const ui = {
-    el,
+    el, t,
+    title: $('.robot-title', el),
     plates: $$('.plate', el),
     speed: $('.shoot-speed', el),
+    shoot: $('.act-shoot', el),
     powerIn: $('.power-in', el),
     powerOut: $('.power-out', el),
     disconnect: $('.act-disconnect', el),
+    slotSeg: $('.slot-seg', el),
+    zoneSeg: $('.zone-seg', el),
+    buyN: $('.buy-n', el),
+    buyCost: $('.buy-cost', el),
+    infChassis: $('.inf-chassis', el),
+    infLauncher: $('.inf-launcher', el),
+    infRow: $('.infantry-row', el),
   };
-  $$('.hit-kind input', el).forEach((x) => { x.name = `hitKind${r}`; });
+  $$('.hit-kind input', el).forEach((x) => { x.name = `hitKind${t}`; });
   const hitKind = () => Number($('.hit-kind input:checked', el)?.value || 0);
+  const slot = () => slotOf(t);
+
   ui.plates.forEach((p) => {
     p.setAttribute('tabindex', '0');
     const fire = () => {
-      if (!el.classList.contains('disabled')) send(commands.hit(r, Number(p.dataset.armor), hitKind()));
+      if (!el.classList.contains('disabled')) send(commands.hit(slot(), Number(p.dataset.armor), hitKind()));
     };
     p.addEventListener('click', fire);
     p.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fire(); } });
   });
-  $('.act-shoot', el).addEventListener('click', () => {
+  ui.shoot.addEventListener('click', () => {
     const speed = Math.max(0, Math.min(60, parseFloat(ui.speed.value) || 0));
-    send(commands.shoot(r, 5, speed));
+    send(commands.shoot(slot(), 5, speed));
   });
   let powerTimer = null;
   ui.powerIn.addEventListener('input', () => {
     ui.powerOut.textContent = `${ui.powerIn.value} W`;
     clearTimeout(powerTimer);
-    powerTimer = setTimeout(() => send(commands.power(r, Number(ui.powerIn.value))), 60);
+    powerTimer = setTimeout(() => send(commands.power(slot(), Number(ui.powerIn.value))), 60);
   });
-  $('.act-yellow', el).addEventListener('click', () => send(commands.penalty(r, PENALTY.YELLOW)));
+  $$('.seg-btn', ui.slotSeg).forEach((b) => b.addEventListener('click', () => {
+    state.role[t] = Number(b.dataset.role);
+    syncPanelInputs(ui);
+    render();
+  }));
+  $$('.seg-btn', ui.zoneSeg).forEach((b) => b.addEventListener('click', () => send(commands.zone(slot(), Number(b.dataset.zone)))));
+  $('.act-buy', el).addEventListener('click', () => send(commands.exchange(slot(), Math.max(1, Math.min(500, Number(ui.buyN.value) || 0)))));
+  const sendInfantry = () => send(commands.robot(slot(), infantry3v3(ui.infChassis.value, ui.infLauncher.value)));
+  ui.infChassis.addEventListener('change', sendInfantry);
+  ui.infLauncher.addEventListener('change', sendInfantry);
+  $('.act-yellow', el).addEventListener('click', () => send(commands.penalty(slot(), PENALTY.YELLOW)));
   $('.act-red', el).addEventListener('click', () => {
-    if (confirm(`Red card ${TEAM_NAMES[r]}? The robot is destroyed.`)) send(commands.penalty(r, PENALTY.RED));
+    if (confirm(`Red card ${slotName(slot())}? The robot is ejected.`)) send(commands.penalty(slot(), PENALTY.RED));
   });
   $('.act-forfeit', el).addEventListener('click', () => {
-    if (confirm(`${TEAM_NAMES[r]} forfeits? The match ends.`)) send(commands.penalty(r, PENALTY.FORFEIT));
+    if (confirm(`${TEAM[t]} forfeits? The round ends.`)) send(commands.penalty(slot(), PENALTY.FORFEIT));
   });
-  $('.act-kill', el).addEventListener('click', () => send(commands.life(r, LIFE.KILL)));
-  $('.act-revive', el).addEventListener('click', () => send(commands.life(r, LIFE.REVIVE)));
+  $('.act-kill', el).addEventListener('click', () => send(commands.life(slot(), LIFE.KILL)));
+  $('.act-revive', el).addEventListener('click', () => send(commands.life(slot(), LIFE.REVIVE)));
   ui.disconnect.addEventListener('click', () => {
-    const offline = state.server?.robots[r]?.disconnected;
-    send(commands.life(r, offline ? LIFE.RECONNECT : LIFE.DISCONNECT));
+    const offline = state.server?.robots[slot()]?.disconnected;
+    send(commands.life(slot(), offline ? LIFE.RECONNECT : LIFE.DISCONNECT));
   });
   return ui;
 });
 
+// Speed field follows the selected robot's limit (just under it).
+function syncPanelInputs(ui) {
+  const r = state.server?.robots[slotOf(ui.t)];
+  if (r) ui.speed.value = (Math.max(1, r.speedLimit - 1)).toFixed(1);
+  if (r) ui.powerIn.value = r.power;
+  ui.powerOut.textContent = `${ui.powerIn.value} W`;
+}
+
+// ------------------------------------------------------------ match control
 $$('[data-game]').forEach((b) => {
   b.addEventListener('click', () => {
     const a = Number(b.dataset.game);
-    if (a === GAME.END && !confirm('End the round now? The winner is decided by the 1v1 criteria.')) return;
+    if (a === GAME.END && !confirm('End the round now? The winner is decided by the rules for this mode.')) return;
     send(commands.game(a));
   });
 });
 $('#btnBothYellow').addEventListener('click', () => send(commands.penalty(0, PENALTY.BOTH_YELLOW)));
 
-const presetSelect = $('#presetSelect');
-for (const [key, p] of Object.entries(PRESETS)) presetSelect.append(new Option(p.label, key));
-presetSelect.append(new Option('Custom', 'custom'));
-presetSelect.addEventListener('change', () => {
-  const p = PRESETS[presetSelect.value];
-  if (!p) return;
+function infantryChoices() {
+  return panels.map((p) => ({ chassis: p.infChassis.value, launcher: p.infLauncher.value }));
+}
+
+function applyMode(mode, { combatTime, setupTime, link } = MODES[mode], robots = modeRobots(mode, infantryChoices())) {
+  send(commands.config({ gameType: MODES[mode].gameType, link, combatTime, setupTime }));
+  robots.forEach((c, slot) => send(commands.robot(slot, c)));
+}
+
+$$('.mode-seg .seg-btn').forEach((b) => b.addEventListener('click', () => {
+  const mode = b.dataset.mode;
+  state.uiMode = mode;
+  if (state.link && state.server?.stage === 0) {
+    applyMode(mode);
+    fillStatsTable(modeRobots(mode, infantryChoices()));
+    const form = $('#configForm');
+    form.combatTime.value = MODES[mode].combatTime;
+    form.setupTime.value = MODES[mode].setupTime;
+    state.configDirty = false;
+  }
+  render();
+}));
+
+// ------------------------------------------------------------ rules config
+const statsBody = $('#statsBody');
+const statRows = SLOTS.map((x, slot) => {
+  const tr = document.createElement('tr');
+  const name = document.createElement('td');
+  name.textContent = `${TEAM[x.team][0]} ${x.name}`;
+  name.className = `slot-name t${x.team}`;
+  tr.append(name);
+  const cell = (input) => { const td = document.createElement('td'); td.append(input); tr.append(td); return input; };
+  const box = (cls) => { const i = document.createElement('input'); i.type = 'checkbox'; i.className = cls; return cell(i); };
+  const num = (k) => { const i = document.createElement('input'); i.type = 'number'; i.min = 0; i.max = 5000; i.dataset.k = k; return cell(i); };
+  const row = { tr, fielded: box('st-on'), cal42: box('st-42'), nums: Object.fromEntries(STAT_FIELDS.map((k) => [k, num(k)])) };
+  statsBody.append(tr);
+  return row;
+});
+
+function fillStatsTable(robots) {
+  robots.forEach((c, i) => {
+    const row = statRows[i];
+    row.fielded.checked = c.fielded;
+    row.cal42.checked = c.cal42;
+    for (const k of STAT_FIELDS) row.nums[k].value = c[k];
+  });
+}
+
+function readStatsTable() {
+  const n = (x) => Math.max(0, Math.min(0xffff, Math.round(Number(x.value) || 0)));
+  return statRows.map((row) => ({
+    fielded: row.fielded.checked,
+    cal42: row.cal42.checked,
+    ...Object.fromEntries(STAT_FIELDS.map((k) => [k, n(row.nums[k])])),
+  }));
+}
+
+function buildLinkOptions(mode) {
+  const sel = $('#configForm').link;
+  const keep = sel.value;
+  sel.replaceChildren(...(mode === '1v1' ? [1, 4] : [0, 1, 2, 3, 4, 5]).map((slot) => new Option(`${slotName(slot, mode)} (ID ${SLOTS[slot].id})`, slot)));
+  if ([...sel.options].some((o) => o.value === keep)) sel.value = keep;
+}
+
+$('#btnPreset').addEventListener('click', () => {
+  const mode = modeOf(state.server);
+  fillStatsTable(modeRobots(mode, infantryChoices()));
   const form = $('#configForm');
-  form.gameType.value = String(p.gameType);
-  for (const k of CONFIG_FIELDS) form[k].value = p[k];
-  configDirty = true;
+  form.combatTime.value = MODES[mode].combatTime;
+  form.setupTime.value = MODES[mode].setupTime;
+  state.configDirty = true;
 });
 
 $('#configForm').addEventListener('submit', (e) => {
   e.preventDefault();
-  const f = new FormData(e.target);
-  const n = (k) => Math.max(0, Math.min(0xffff, Math.round(Number(f.get(k)) || 0)));
-  const c = { gameType: n('gameType'), link: n('link') };
-  for (const k of CONFIG_FIELDS) c[k] = n(k);
-  send(commands.config(c));
-  configDirty = false;
+  const form = e.target;
+  const n = (k) => Math.max(0, Math.min(0xffff, Math.round(Number(form[k].value) || 0)));
+  applyMode(modeOf(state.server), { combatTime: n('combatTime'), setupTime: n('setupTime'), link: n('link') }, readStatsTable());
+  state.configDirty = false;
 });
-let configDirty = false;
-$('#configForm').addEventListener('input', (e) => {
-  configDirty = true;
-  if (e.target !== presetSelect) presetSelect.value = 'custom';
-});
+$('#configForm').addEventListener('input', () => { state.configDirty = true; });
 
 $('#btnClearLog').addEventListener('click', () => { $('#eventLog').replaceChildren(); });
 $('#btnPauseRaw').addEventListener('click', (e) => {
@@ -1477,7 +2006,7 @@ async function connect(link, openOpts) {
   await state.link?.close();
   Object.assign(state, {
     decoder: new FrameDecoder(), server: null, serverAt: 0, real: {}, counts: {}, rates: {},
-    lastCounts: {}, rxBytes: 0, txBytes: 0, rawLines: [], boardText: '', lastHp: [null, null],
+    lastCounts: {}, rxBytes: 0, txBytes: 0, rawLines: [], boardText: '', configDirty: false,
   });
   state.decoder.onSkipped = onBoardText;
   link.onData = onData;
@@ -1497,7 +2026,6 @@ async function connect(link, openOpts) {
   state.link = link;
   state.connectedAt = performance.now();
   setLinkUi(link);
-  // Give the board wall-clock time for SyncTimeStamp.
   send(commands.time(Math.floor(Date.now() / 1000)));
 }
 
@@ -1514,8 +2042,8 @@ function send([cmd, payload]) {
 
 function setLinkUi(link, reason) {
   $('#btnConnect').hidden = !!link;
-  $('#btnDemo').hidden = !!link;
   $('#btnOtherPort').hidden = !!link || !SerialLink.supported();
+  $('#btnDemo').hidden = !!link;
   $('#btnDisconnect').hidden = !link;
   $('#portHint').hidden = true;
   const pill = $('#linkPill');
@@ -1531,16 +2059,18 @@ function onData(chunk) {
     state.counts[f.cmd] = (state.counts[f.cmd] || 0) + 1;
     const d = decodePayload(f.cmd, f.data);
     if (f.cmd === CMD.SERVER_STATE && d) {
+      const first = !state.server;
       state.server = d;
       state.serverAt = performance.now();
+      if (first) panels.forEach(syncPanelInputs);
     } else if (f.cmd === CMD.EVENT && d) {
       logEvent(d);
     } else if (d) {
       state.real[f.cmd] = d;
-      if (f.cmd === CMD.GAME_RESULT || f.cmd === CMD.REFEREE_WARNING) logReal(f.cmd, d);
+      if (f.cmd === CMD.GAME_RESULT) addLogLine(null, 'k-revive', `round over: ${['draw', 'RED wins', 'BLUE wins'][d.winner] || '?'}`);
     }
     if (!state.rawPaused && !(f.cmd === CMD.POWER_HEAT && $('#hide0202').checked)) {
-      state.rawLines.push(`${f.cmd.toString(16).padStart(4, '0')} ${(CMD_NAMES[f.cmd] || '?').padEnd(15)} ${hex(f.raw)}`);
+      state.rawLines.push(`${f.cmd.toString(16).padStart(4, '0')} ${(CMD_NAMES[f.cmd] || '?').padEnd(16)} ${hex(f.raw)}`);
       if (state.rawLines.length > 200) state.rawLines.splice(0, state.rawLines.length - 200);
     }
   }
@@ -1563,7 +2093,7 @@ function matchClock() {
   return ['idle', 'setup', 'init', 'count', '', 'end'][s.stage] || '';
 }
 
-function addLogLine(robot, cls, text, hpText = '') {
+function addLogLine(robot, cls, text, valueText = '') {
   const li = document.createElement('li');
   const t = document.createElement('span');
   t.className = 't';
@@ -1571,18 +2101,18 @@ function addLogLine(robot, cls, text, hpText = '') {
   const body = document.createElement('span');
   if (robot !== null) {
     const who = document.createElement('span');
-    who.className = `who r${robot}`;
-    who.textContent = `${TEAM_NAMES[robot]} `;
+    who.className = `who r${SLOTS[robot].team}`;
+    who.textContent = `${slotName(robot)} `;
     body.append(who);
   }
   const what = document.createElement('span');
   what.className = cls;
   what.textContent = text;
   body.append(what);
-  const hp = document.createElement('span');
-  hp.className = 'hpv';
-  hp.textContent = hpText;
-  li.append(t, body, hp);
+  const v = document.createElement('span');
+  v.className = 'hpv';
+  v.textContent = valueText;
+  li.append(t, body, v);
   const log = $('#eventLog');
   log.prepend(li);
   while (log.children.length > 300) log.lastChild.remove();
@@ -1607,41 +2137,48 @@ function eventText(e) {
     case 12: return 'offline: -5 % max HP';
     case 13: return e.detail === 1 ? 'launcher unlocked (heat back to 0)' : 'launcher unlocked (speed lock over)';
     case 14: return `both teams yellow #${e.detail}: -5 %`;
+    case 15: return e.detail === 0 ? `bought projectiles (now ${e.hp})` : 'exchange refused (not in resupply zone, Sentry, or not enough gold)';
+    case 16: return "42 mm hit ignored: attacker's Hero is idle or down";
+    case 17: return `respawned at ${e.hp} HP (invincible 30 s, weakened)`;
+    case 19: return "teammate's yellow card: -5 %";
     default: return EVENT_KINDS[e.kind] || `event ${e.kind}`;
   }
 }
 
 function logEvent(e) {
-  const kind = EVENT_KINDS[e.kind] || `event-${e.kind}`;
-  if (e.kind === 1) flashPlate(e.robot, e.detail & 0xf);
   if (e.kind === 2) return; // shots are frequent; heat and projectile gauges show them
+  if (e.kind === 1) flashPlate(e.robot, e.detail & 0xf);
+  if (e.kind === 18) {
+    addLogLine(null, 'k-capture', `capture point: ${['free', 'RED holds', 'BLUE holds', 'contested'][e.detail]}`);
+    return;
+  }
+  const kind = EVENT_KINDS[e.kind] || `event-${e.kind}`;
   const text = eventText(e);
-  // Offline drain repeats every second; fold a run into one line.
+  const value = e.kind === 15 ? '' : `${e.hp} HP`;
   const last = state.lastLog;
   if (e.kind === 12 && last && last.robot === e.robot && last.kind === e.kind && last.li.isConnected) {
     last.n++;
     last.li.children[1].lastChild.textContent = `${text} ×${last.n}`;
-    last.li.children[2].textContent = `${e.hp} HP`;
+    last.li.children[2].textContent = value;
   } else {
-    const li = addLogLine(e.robot, `k-${kind}`, text, `${e.hp} HP`);
+    const li = addLogLine(e.robot, `k-${kind}`, text, value);
     state.lastLog = { li, robot: e.robot, kind: e.kind, n: 1 };
   }
   if (e.hp === 0 && [1, 6, 8, 12].includes(e.kind)) addLogLine(e.robot, 'k-defeated', 'defeated');
-  if ([1, 5, 12, 14].includes(e.kind)) {
-    teams[e.robot].el.classList.remove('flash');
-    void teams[e.robot].el.offsetWidth;
-    teams[e.robot].el.classList.add('flash');
-  }
-}
-
-function logReal(cmd, d) {
-  if (cmd === CMD.GAME_RESULT) {
-    addLogLine(null, 'k-revive', `round over: ${['draw', 'RED wins', 'BLUE wins'][d.winner] || '?'}`);
+  if ([1, 5, 12, 14, 19].includes(e.kind)) {
+    const u = teams.flatMap((t) => t.units).find((x) => x.slot === e.robot);
+    if (u) {
+      u.el.classList.remove('flash');
+      void u.el.offsetWidth;
+      u.el.classList.add('flash');
+    }
   }
 }
 
 function flashPlate(robot, armor) {
-  const p = robots[robot]?.plates[armor];
+  const panel = panels[SLOTS[robot].team];
+  if (slotOf(panel.t) !== robot) return;
+  const p = panel.plates[armor];
   if (!p) return;
   p.classList.remove('hit');
   void p.getBoundingClientRect();
@@ -1657,59 +2194,82 @@ function pct(a, b) {
   return b ? Math.max(0, Math.min(100, (100 * a) / b)) : 0;
 }
 
+function setChip(chip, cls, text) {
+  chip.hidden = !text;
+  chip.className = `chip ${cls}`;
+  chip.textContent = text;
+}
+
+function renderUnit(u, r, s) {
+  if (!r || !r.fielded) {
+    u.el.classList.add('absent');
+    u.hpValue.textContent = r ? '—' : '---';
+    u.hpMax.textContent = r ? 'not fielded' : '';
+    u.hpFill.style.width = u.hpGhost.style.width = '0%';
+    for (const x of [u.heatValue, u.bufferValue, u.powerValue, u.ammoValue]) x.textContent = '';
+    u.heatFill.style.width = u.bufferFill.style.width = '0%';
+    u.badge.textContent = r ? '' : 'OFFLINE';
+    u.badge.className = 'badge state-badge';
+    u.link.hidden = true;
+    u.cards.replaceChildren();
+    for (const c of [u.chipShooter, u.chipChassis, u.chipGimbal, u.chipSpecial]) setChip(c, '', '');
+    u.el.classList.remove('dead');
+    return;
+  }
+  u.el.classList.remove('absent');
+  u.hpValue.textContent = r.hp;
+  u.hpMax.textContent = `/ ${r.maxHp}`;
+  u.hpFill.style.width = u.hpGhost.style.width = `${pct(r.hp, r.maxHp)}%`;
+  u.heatFill.style.width = `${pct(r.heat, r.heatLimit)}%`;
+  u.heatBar.classList.toggle('over', r.heat > r.heatLimit);
+  u.heatValue.textContent = `${r.heat} / ${r.heatLimit}`;
+  u.bufferFill.style.width = `${pct(r.buffer, 60)}%`;
+  u.bufferValue.textContent = `${r.buffer} J`;
+  u.powerValue.textContent = `${r.power} / ${r.powerLimit} W`;
+  u.ammoValue.textContent = u.el.classList.contains('compact')
+    ? `${r.allowance} × ${r.cal42 ? '42' : '17'} mm`
+    : `${r.allowance} ${r.cal42 ? '42 mm' : '17 mm'} (${r.shots} fired)`;
+  u.link.hidden = s.link !== u.slot;
+  const dead = !r.alive;
+  u.badge.textContent = r.redCard ? 'EJECTED' : r.respawning ? `RESPAWN ${r.respawnS}s` : dead ? 'DEFEATED'
+    : r.disconnected ? 'OFFLINE' : 'ONLINE';
+  u.badge.className = `badge state-badge${dead || r.disconnected ? ' dead' : ''}`;
+  u.el.classList.toggle('dead', dead);
+  let shooter = ['on', 'Launcher on'];
+  if (!r.shooterOn) {
+    if (r.weakened) shooter = ['warn', 'Launcher locked: weakened'];
+    else if (r.speedLocked) shooter = ['bad', r.speedLockS === 255 ? 'Launcher locked: speed (round)' : `Launcher locked: speed ${r.speedLockS} s`];
+    else if (r.heatLocked) shooter = ['bad', 'Launcher locked: heat'];
+    else if (r.allowance === 0 && r.alive) shooter = ['warn', 'No projectiles'];
+    else shooter = ['', 'Launcher off'];
+  }
+  setChip(u.chipShooter, ...shooter);
+  setChip(u.chipChassis, ...(r.chassisOn ? ['on', 'Chassis on']
+    : r.chassisCutDs ? ['bad', `Chassis cut ${(r.chassisCutDs / 10).toFixed(1)} s`] : ['', 'Chassis off']));
+  setChip(u.chipGimbal, ...(r.disconnected ? ['bad', 'Disconnected'] : r.gimbalOn ? ['on', 'Gimbal on'] : ['', 'Gimbal off']));
+  const special = r.invincible ? ['on', `Invincible ${r.invincibleS} s`]
+    : r.zone === 1 ? ['on', 'In resupply zone'] : r.zone === 2 ? ['warn', 'On capture point'] : ['', ''];
+  setChip(u.chipSpecial, ...special);
+  const cards = [];
+  for (let k = 0; k < Math.min(r.yellow, 8); k++) cards.push('<span class="card yellow"></span>');
+  if (r.redCard) cards.push('<span class="card red"></span>');
+  u.cards.innerHTML = cards.length ? cards.join('') : '<span class="hint">none</span>';
+}
+
 function renderTeams(s) {
-  teams.forEach((t, i) => {
-    const r = s?.robots[i];
-    if (!r) {
-      t.hpValue.textContent = '---';
-      t.hpMax.textContent = '';
-      t.hpFill.style.width = t.hpGhost.style.width = '0%';
-      t.heatValue.textContent = t.bufferValue.textContent = t.powerValue.textContent = t.ammoValue.textContent = '';
-      for (const c of [t.chipShooter, t.chipChassis, t.chipGimbal]) { c.textContent = ''; c.hidden = true; }
-      t.heatFill.style.width = t.bufferFill.style.width = '0%';
-      t.stateBadge.textContent = 'OFFLINE';
-      t.stateBadge.className = 'badge state-badge';
-      t.linkBadge.hidden = true;
-      t.cards.replaceChildren();
-      t.el.classList.remove('dead');
-      return;
+  const mode = modeOf(s);
+  if (state.layout !== mode) buildTeams(mode);
+  for (const tm of teams) {
+    for (const u of tm.units) renderUnit(u, s?.robots[u.slot], s);
+    if (mode === '3v3') {
+      const t = s?.teams[tm.t];
+      tm.vpValue.textContent = t ? t.vp : '---';
+      tm.vpFill.style.width = `${t ? pct(t.vp, 200) : 0}%`;
+      tm.coins.textContent = t ? t.coins : '';
+      tm.dmg.textContent = t ? t.damage : '';
+      setChip(tm.hero42, t?.heroLive ? 'on' : '', t ? (t.heroLive ? '42 mm hits count' : '42 mm hits blocked') : '');
     }
-    t.hpValue.textContent = r.hp;
-    t.hpMax.textContent = `/ ${r.maxHp}`;
-    t.hpFill.style.width = `${pct(r.hp, r.maxHp)}%`;
-    t.hpGhost.style.width = `${pct(r.hp, r.maxHp)}%`;
-    t.heatFill.style.width = `${pct(r.heat, r.heatLimit)}%`;
-    t.heatBar.classList.toggle('over', r.heat > r.heatLimit);
-    t.heatValue.textContent = `${r.heat} / ${r.heatLimit}`;
-    t.bufferFill.style.width = `${pct(r.buffer, 60)}%`;
-    t.bufferValue.textContent = `${r.buffer} J`;
-    t.powerValue.textContent = `${r.power} / ${r.powerLimit} W`;
-    t.ammoValue.textContent = `${r.allowance} (${r.shots} fired)`;
-    t.linkBadge.hidden = s.link !== i;
-    const dead = !r.alive;
-    t.stateBadge.textContent = r.redCard ? 'EJECTED' : dead ? 'DEFEATED' : r.disconnected ? 'OFFLINE' : 'ONLINE';
-    let shooter = ['on', 'Launcher on'];
-    if (!r.shooterOn) {
-      if (r.speedLocked) shooter = ['bad', r.speedLockS === 255 ? 'Launcher locked: speed (round)' : `Launcher locked: speed ${r.speedLockS} s`];
-      else if (r.heatLocked) shooter = ['bad', 'Launcher locked: heat'];
-      else if (r.allowance === 0 && r.alive) shooter = ['warn', 'No projectiles'];
-      else shooter = ['', 'Launcher off'];
-    }
-    const chassis = r.chassisOn ? ['on', 'Chassis on']
-      : r.chassisCutDs ? ['bad', `Chassis cut ${(r.chassisCutDs / 10).toFixed(1)} s`] : ['', 'Chassis off'];
-    const gimbal = r.disconnected ? ['bad', 'Disconnected'] : r.gimbalOn ? ['on', 'Gimbal on'] : ['', 'Gimbal off'];
-    for (const [chip, [cls, text]] of [[t.chipShooter, shooter], [t.chipChassis, chassis], [t.chipGimbal, gimbal]]) {
-      chip.hidden = false;
-      chip.className = `chip ${cls}`;
-      chip.textContent = text;
-    }
-    t.stateBadge.className = `badge state-badge${dead || r.disconnected ? ' dead' : ''}`;
-    t.el.classList.toggle('dead', dead);
-    const cards = [];
-    for (let k = 0; k < Math.min(r.yellow, 8); k++) cards.push('<span class="card yellow"></span>');
-    if (r.redCard) cards.push('<span class="card red"></span>');
-    t.cards.innerHTML = cards.length ? cards.join('') : '<span class="hint">none</span>';
-  });
+  }
 }
 
 function renderClock(s) {
@@ -1717,6 +2277,8 @@ function renderClock(s) {
   const timeEl = $('#clockTime');
   const sub = $('#clockSub');
   const banner = $('#resultBanner');
+  const cap = $('#captureInfo');
+  $('#modeTag').textContent = modeOf(s);
   if (!s) {
     stageEl.textContent = state.link ? 'Waiting for board' : 'Not connected';
     stageEl.className = 'stage';
@@ -1724,6 +2286,7 @@ function renderClock(s) {
     timeEl.className = 'time';
     sub.innerHTML = '&nbsp;';
     banner.hidden = true;
+    cap.hidden = true;
     $('#resultWhy').hidden = true;
     return;
   }
@@ -1733,7 +2296,10 @@ function renderClock(s) {
   else if (s.stage === 5) timeEl.textContent = '0:00';
   else timeEl.textContent = fmtTime(s.remain);
   timeEl.className = `time${s.stage >= 1 && s.stage <= 3 ? ' countdown' : ''}`;
-  sub.textContent = `${GAME_TYPES[s.gameType] || `type ${s.gameType}`} · link ${TEAM_NAMES[s.link]}`;
+  sub.textContent = `${GAME_TYPES[s.gameType] || `type ${s.gameType}`} · link ${slotName(s.link)}`;
+  cap.hidden = !s.mode3;
+  cap.className = `capture c${s.capture}`;
+  cap.textContent = `Capture point: ${['free', 'RED holds', 'BLUE holds', 'contested'][s.capture]}`;
   banner.hidden = s.stage !== 5;
   if (s.stage === 5) {
     const w = s.winner;
@@ -1748,6 +2314,7 @@ function renderClock(s) {
 function renderControls(s) {
   const connected = !!(state.link && s);
   const st = s?.stage ?? -1;
+  const mode = modeOf(s);
   const enable = {
     1: st === 0,
     2: st === 0 || st === 1,
@@ -1757,33 +2324,43 @@ function renderControls(s) {
     6: true,
   };
   $$('[data-game]').forEach((b) => { b.disabled = !connected || !enable[b.dataset.game]; });
-  const combat = st === 4 && !s?.paused;
   $('#btnBothYellow').disabled = !connected;
-  robots.forEach((ui, i) => {
-    const r = s?.robots[i];
-    ui.el.classList.toggle('disabled', !connected || !combat || !r?.alive || r?.disconnected);
-    $('.act-shoot', ui.el).disabled = !connected || !combat || !r?.shooterOn;
-    ui.disconnect.textContent = r?.disconnected ? 'Reconnect' : 'Disconnect';
-    $$('button', ui.el).filter((b) => !b.classList.contains('act-shoot')).forEach((b) => { b.disabled = !connected; });
-    $$('.hit-kind input', ui.el).forEach((x) => { x.disabled = !connected; });
-    $('.act-forfeit', ui.el).disabled = !connected || !(st >= 1 && st <= 4);
-    ui.powerIn.disabled = !connected;
+  $$('.mode-seg .seg-btn').forEach((b) => {
+    b.classList.toggle('active', b.dataset.mode === mode);
+    b.setAttribute('aria-checked', b.dataset.mode === mode);
+    b.disabled = !!state.link && (!s || st !== 0);
   });
+  const combat = st === 4 && !s?.paused;
+  for (const ui of panels) {
+    const slot = slotOf(ui.t);
+    const r = s?.robots[slot];
+    ui.title.textContent = `${slotName(slot, mode)} controls`;
+    ui.slotSeg.hidden = mode !== '3v3';
+    $$('.seg-btn', ui.slotSeg).forEach((b) => b.classList.toggle('active', Number(b.dataset.role) === state.role[ui.t]));
+    $$('.v3-only', ui.el).forEach((x) => { x.hidden = mode !== '3v3'; });
+    ui.infRow.hidden = mode !== '3v3' || SLOTS[slot].role !== 'infantry';
+    ui.el.classList.toggle('disabled', !connected || !combat || !r?.alive || r?.disconnected);
+    ui.shoot.disabled = !connected || !combat || !r?.shooterOn;
+    ui.shoot.textContent = r?.cal42 ? 'Fire 42 mm' : 'Fire 17 mm';
+    ui.disconnect.textContent = r?.disconnected ? 'Reconnect' : 'Disconnect';
+    $$('button, select, input', ui.el).filter((b) => b !== ui.shoot && !b.closest('.slot-seg'))
+      .forEach((b) => { b.disabled = !connected || !r?.fielded; });
+    $('.act-forfeit', ui.el).disabled = !connected || !(st >= 1 && st <= 4);
+    ui.infChassis.disabled = ui.infLauncher.disabled = !connected || st > 1;
+    $$('.seg-btn', ui.zoneSeg).forEach((b) => b.classList.toggle('active', Number(b.dataset.zone) === (r?.zone ?? 0)));
+    const n = Math.max(1, Number(ui.buyN.value) || 0);
+    ui.buyCost.textContent = r ? `${r.cal42 ? 10 * n : n} gold (${TEAM[ui.t]} has ${s.teams[ui.t].coins})` : '';
+  }
   const form = $('#configForm');
   $$('input, select, button', form).forEach((x) => { x.disabled = !connected || st !== 0; });
-  if (s && !configDirty && document.activeElement?.form !== form) {
-    const live = {
-      gameType: s.gameType, combatTime: s.combatTime, setupTime: s.setupTime, maxHp: s.robots[0].maxHp,
-      hitDmg: s.hitDmg, heatLimit: s.robots[0].heatLimit, cooling: s.cooling,
-      powerLimit: s.robots[0].powerLimit, speedLimit: s.speedLimit, allowance: null,
-    };
-    form.gameType.value = String(s.gameType);
+  if (s && !state.configDirty && !form.contains(document.activeElement)) {
+    form.combatTime.value = s.combatTime;
+    form.setupTime.value = s.setupTime;
     form.link.value = String(s.link);
-    for (const k of CONFIG_FIELDS) if (live[k] !== null) form[k].value = live[k];
-    if (st === 0) form.allowance.value = s.robots[0].allowance;
-    const match = Object.entries(PRESETS).find(([, p]) => CONFIG_FIELDS.every((k) => live[k] === null || p[k] === live[k])
-      && p.gameType === s.gameType);
-    presetSelect.value = match ? match[0] : 'custom';
+    fillStatsTable(s.robots.map((r) => ({
+      fielded: r.fielded, cal42: r.cal42, maxHp: r.maxHp, heatLimit: r.heatLimit, cooling: r.cooling,
+      powerLimit: r.powerLimit, speedLimit: r.speedLimit, allowance: r.allowance,
+    })));
   }
 }
 
@@ -1802,15 +2379,15 @@ function renderLinkView() {
   const rs = state.real[CMD.ROBOT_STATUS];
   const ph = state.real[CMD.POWER_HEAT];
   const hp = state.real[CMD.ROBOT_HP];
+  const ev = state.real[CMD.FIELD_EVENT];
+  const buff = state.real[CMD.BUFF];
   const hurt = state.real[CMD.HURT];
   const shot = state.real[CMD.SHOOT];
   const warn = state.real[CMD.REFEREE_WARNING];
   $('#linkRobotName').textContent = rs ? `(robot_id ${rs.robotId})` : '';
-  if (!g && !rs) {
-    field(dl, 'status', state.link ? 'waiting for frames' : 'not connected');
-  }
+  if (!g && !rs) field(dl, 'status', state.link ? 'waiting for frames' : 'not connected');
   if (g) {
-    field(dl, '0x0001 game_progress', `${g.progress} (${STAGES[g.progress] || '?'})`);
+    field(dl, '0x0001 game_type / progress', `${g.gameType} / ${g.progress} (${STAGES[g.progress] || '?'})`);
     field(dl, '0x0001 stage_remain_time', `${g.remain} s`);
     field(dl, '0x0001 SyncTimeStamp', g.timestamp ? new Date(g.timestamp * 1000).toLocaleTimeString() : '0');
   }
@@ -1822,11 +2399,16 @@ function renderLinkView() {
   }
   if (ph) {
     field(dl, '0x0202 buffer_energy', `${ph.buffer} J`);
-    field(dl, '0x0202 17mm barrel heat', `${ph.heat17}`);
+    field(dl, '0x0202 barrel heat 17 / 42 mm', `${ph.heat17} / ${ph.heat42}`);
   }
-  if (hp) field(dl, '0x0003 ally_3 HP', `${hp.ally3}`);
+  if (hp) field(dl, '0x0003 ally HP 1 / 3 / 7', `${hp.ally1} / ${hp.ally3} / ${hp.ally7}`);
+  if (ev && state.server?.mode3) {
+    field(dl, '0x0101 resupply zone', ev.resupply ? 'occupied' : 'free');
+    field(dl, '0x0101 center point', ['free', 'ours', 'enemy', 'both'][ev.center]);
+  }
+  if (buff && state.server?.mode3) field(dl, '0x0204 recovery / defence', `${buff.recovery} % / ${buff.defence} %`);
   if (hurt) field(dl, '0x0206 last hurt', `armor ${hurt.armor}, ${HURT_REASONS[hurt.reason] || hurt.reason}`);
-  if (shot) field(dl, '0x0207 last shot', `${shot.speed.toFixed(1)} m/s`);
+  if (shot) field(dl, '0x0207 last shot', `${shot.bulletType === 2 ? '42' : '17'} mm at ${shot.speed.toFixed(1)} m/s`);
   if (warn) field(dl, '0x0104 last warning', `level ${warn.level}, robot ${warn.offender}, count ${warn.count}`);
 
   const rows = Object.keys(state.counts).map(Number).sort((a, b) => a - b).map((c) => {
@@ -1844,9 +2426,7 @@ function renderLinkView() {
 function renderLinkStats() {
   const s = state.server;
   const pill = $('#linkPill');
-  // Connected but nothing decodable after 2.5 s: almost always the wrong port.
-  const silent = state.link instanceof SerialLink && !state.serverAt
-    && performance.now() - state.connectedAt > 2500;
+  const silent = state.link instanceof SerialLink && !state.serverAt && performance.now() - state.connectedAt > 2500;
   $('#portHint').hidden = !silent;
   if (state.link) {
     const stale = !state.serverAt || performance.now() - state.serverAt > 1000;
@@ -1868,10 +2448,11 @@ function render() {
   if (!state.rawPaused) $('#rawLog').textContent = state.rawLines.slice(-80).join('\n');
 }
 
+buildTeams(state.uiMode);
+fillStatsTable(modeRobots('1v1'));
+
 setInterval(() => {
-  for (const [c, n] of Object.entries(state.counts)) {
-    state.rates[c] = n - (state.lastCounts[c] || 0);
-  }
+  for (const [c, n] of Object.entries(state.counts)) state.rates[c] = n - (state.lastCounts[c] || 0);
   state.lastCounts = { ...state.counts };
 }, 1000);
 
@@ -1881,7 +2462,7 @@ setInterval(() => {
 })();
 
 // Exposed for debugging from the devtools console.
-window.arcRef = { state, send, commands, ROBOT_IDS };
+window.arcRef = { state, send, commands, HIT_KIND };
 })();
 </script>
 </body>
