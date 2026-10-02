@@ -15,10 +15,11 @@ controlled from a web page in Chrome.
                                        └─────────────────────────────────────────────┘
 ```
 
-All referee logic runs in the FPGA fabric. The board sends **real referee
-frames** (`0x0001` game status, `0x0201` robot status, `0x0202` power/heat,
-`0x0206` hurt, and others), so a robot's existing referee parser should work
-against it. Later you could route the same byte stream out a Pmod UART to a
+All referee logic runs in the FPGA fabric and follows the **ARCC 2026 1v1
+rules** (Events Manual V1.6). The board sends **real referee frames** in the
+2026 protocol layouts (`0x0001` game status, `0x0201` robot status, `0x0202`
+buffer/heat, `0x0206` hurt, and others), so a robot's existing referee
+parser should work against it. Later you could route the same byte stream out a Pmod UART to a
 robot. The ARM core only copies bytes between USB and the fabric.
 
 See [docs/protocol.md](docs/protocol.md) for the frame formats, control
@@ -94,12 +95,17 @@ FTDI devices. **Other port…** shows everything, if you use a different USB-UAR
 
 ### 4. Run a match
 
-1. Optionally adjust **Rules config** and click **Apply** (only before a match).
-2. **Start match** runs the 15 s self-check, then the 5 s countdown, then combat.
-3. During combat: click armor plates or press **BTN0–3** on the board (SW0 chooses
-   red or blue) for hits, **Fire** for shots (adds barrel heat), drag
-   **Chassis draw** past the limit to drain buffer energy, and give cards with
-   the penalty buttons.
+1. Optionally pick a **preset** or adjust **Rules config**, then click **Apply**
+   (only before a match). The default is the ARCC 2026 1v1 Infantry.
+2. **Start setup period** runs the setup countdown (pause it for timeouts), then
+   the 15 s referee init, the 5 s countdown and the 2-minute battle. **Skip to
+   init** jumps straight to the init period.
+3. During the battle:
+   - Click armor plates, or press **BTN0–3** on the board (SW0 picks red or blue), to register hits. Choose 17 mm, 42 mm or collision per robot.
+   - **Fire** shots to add barrel heat. A speed over 25 m/s locks the launcher.
+   - Drag **Chassis draw** past the limit to drain buffer energy and trigger the 5 s chassis cut.
+   - Give yellow or red cards, a both-teams yellow, a forfeit, or simulate an abnormal disconnection.
+   - A defeated robot ends the round. Otherwise the 1v1 tie-breaks decide it at time-out, and the console shows why that side won.
 4. **Robot link view** shows the real frames decoded the way the link robot
    would see them.
 
@@ -126,10 +132,12 @@ the commands from the Makefile directly if you don't have `make`.
 
 ## Not done yet / to verify
 
-- **Rules are placeholders.** Heat, power, damage and timing numbers need to match
-  the ARC 2026 rules manual (`docs/protocol.md`, "Rules model").
-- **Protocol layouts come from the RoboMaster V1.6 appendix.** Check them against
-  the protocol version ARC uses this season.
+- **Only the 1v1 event is modelled.** 3v3 presets change the robot stats, but
+  victory points, the capture point, gold coins and respawn aren't implemented.
+  `docs/protocol.md` lists the rules covered and the ones that aren't.
+- **Check the protocol against ARC's V1.3.0.** The layouts come from an
+  open-source implementation of the 2026 protocol V1.2.0 (the official PDF
+  couldn't be downloaded here). `0x0207` still uses the older layout.
 - **Not yet built in Vivado here.** The RTL passes simulation and a yosys
   synthesis check, but the block-design script, PS settings and the SD/JTAG
   flows haven't been run on real hardware yet.
