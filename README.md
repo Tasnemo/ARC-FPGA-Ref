@@ -141,9 +141,11 @@ the commands from the Makefile directly if you don't have `make`.
 - **A few rules aren't modelled**, such as the pilot screen blackout after a
   yellow card and the 2 s RFID expiry on the capture point. `docs/protocol.md`
   lists everything covered and not covered.
-- **Check that it fits the Z7-10 in Vivado.** The 3v3 version tracks six robots;
-  yosys estimates about 6,700 flip-flops (19 % of the chip) and 14 DSPs, but I
-  couldn't get a LUT count here. If it doesn't fit, the Z7-20 has 3× the room.
+- **Check that it fits the Z7-10 in Vivado.** A full open-source synthesis
+  (yosys `synth_xilinx`) puts the fabric at about 12,500 LUTs (71 % of the
+  Z7-10), 5,000 flip-flops (14 %) and 14 of 80 DSPs. Vivado usually maps
+  tighter, but the PS block design adds some AXI glue; `build/utilization.txt`
+  from `build_all` has the real numbers.
 - **Check the protocol against ARC's V1.3.0.** The layouts come from an
   open-source implementation of the 2026 protocol V1.2.0 (the official PDF
   couldn't be downloaded here). `0x0207` still uses the older layout.
