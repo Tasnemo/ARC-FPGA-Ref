@@ -1,0 +1,29 @@
+# Builds the bare-metal bridge app from build/arc_ref.xsa (Vitis classic / xsct).
+#
+#   xsct sw/scripts/build_sw.tcl
+#
+# Output: build/vitis/ref_bridge/Debug/ref_bridge.elf
+# Vitis 2024.1 and later dropped the classic flow; there, create a platform
+# from build/arc_ref.xsa and an "Empty Application (C)" in the GUI and add
+# sw/ref_bridge/main.c.
+
+set root [file normalize [file join [file dirname [info script]] .. ..]]
+set xsa  [file join $root build arc_ref.xsa]
+set ws   [file join $root build vitis]
+
+if {![file exists $xsa]} {
+    error "missing $xsa; run hw/scripts/build.tcl in Vivado first"
+}
+
+file delete -force $ws
+setws $ws
+
+platform create -name arc_platform -hw $xsa -proc ps7_cortexa9_0 -os standalone -out $ws
+platform write
+platform generate
+
+app create -name ref_bridge -platform arc_platform -template {Empty Application(C)}
+importsources -name ref_bridge -path [file join $root sw ref_bridge]
+app build -name ref_bridge
+
+puts "INFO: built [file join $ws ref_bridge Debug ref_bridge.elf]"
