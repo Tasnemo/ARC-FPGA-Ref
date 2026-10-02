@@ -1,15 +1,16 @@
 `timescale 1ns / 1ps
 // Builds referee-protocol frames from the core state and writes them byte by
-// byte into the TX FIFO.
+// byte into the TX FIFO. Layouts follow the RoboMaster 2026 University Series
+// Communication Protocol, which ARCC 2026 uses (Site Manual table 1-2).
 //
-// Real referee frames (as a robot would receive them, for the link robot):
+// Real referee frames (as the link robot would receive them):
 //   0x0001 game status      1 Hz + on stage change
 //   0x0002 game result      on match end
-//   0x0003 robot HP         ~3 Hz
-//   0x0104 referee warning  on penalty
+//   0x0003 ally robot HP    ~3 Hz
+//   0x0104 referee warning  on penalty + 1 Hz
 //   0x0201 robot status     10 Hz
-//   0x0202 power and heat   50 Hz
-//   0x0206 hurt data        on HP deduction
+//   0x0202 buffer and heat  10 Hz
+//   0x0206 hurt data        on armor hit / collision
 //   0x0207 shoot data       on shot
 // Server-side frames for the browser console only:
 //   0xF101 server state     10 Hz
@@ -26,6 +27,9 @@ module arc_frame_gen (
     input  wire        paused,
     input  wire [15:0] remain,
     input  wire [1:0]  winner,
+    input  wire [7:0]  win_reason,
+    input  wire [1:0]  first_dmg,
+    input  wire [1:0]  first_shot,
     input  wire [3:0]  game_type,
     input  wire        link_robot,
     input  wire [31:0] unix_time,
@@ -35,21 +39,26 @@ module arc_frame_gen (
     input  wire [15:0] cfg_cooling,
     input  wire [15:0] cfg_power_limit,
     input  wire [15:0] cfg_hit_dmg,
+    input  wire [15:0] cfg_setup_time,
+    input  wire [15:0] cfg_speed_limit,
     input  wire [31:0] hp_flat,
     input  wire [31:0] heat_flat,
     input  wire [31:0] buffer_flat,
     input  wire [31:0] power_flat,
+    input  wire [31:0] allowance_flat,
+    input  wire [31:0] shots_flat,
     input  wire [15:0] yellow_flat,
-    input  wire [1:0]  alive_flat,
-    input  wire [1:0]  red_card_flat,
+    input  wire [15:0] rflags_flat,
+    input  wire [15:0] lock_s_flat,
+    input  wire [15:0] chassis_ds_flat,
     input  wire [15:0] rx_ok,
     input  wire [15:0] rx_err,
 
-    input  wire        ev_valid,
-    input  wire        ev_robot,
-    input  wire [7:0]  ev_kind,
-    input  wire [7:0]  ev_detail,
-    input  wire [15:0] ev_hp,
+    input  wire [1:0]  ev_valid,
+    input  wire [1:0]  ev_robot,
+    input  wire [15:0] ev_kind,
+    input  wire [15:0] ev_detail,
+    input  wire [31:0] ev_hp,
     input  wire        hurt_valid,
     input  wire [7:0]  hurt_byte,
     input  wire        shot_valid,
@@ -68,40 +77,33 @@ module arc_frame_gen (
 );
     `include "arc_crc.vh"
 
-    localparam integer PLW = 49 * 8;   // largest payload (0xF101)
+    localparam integer PLW = 66 * 8;   // largest payload (0xF101)
 
     // Pending-frame slots, highest priority first
     localparam integer P_HURT = 0, P_SHOT = 1, P_WARN = 2, P_RESULT = 3,
                        P_STAT = 4, P_EV = 5, P_RS = 6, P_PH = 7, P_HP = 8,
                        P_SRV = 9, NP = 10;
 
-    function [31:0] u16_to_f32;
-        input [15:0] x;
-        integer i;
-        reg [4:0]  e;
-        reg [22:0] m;
-        begin
-            e = 5'd0;
-            for (i = 0; i < 16; i = i + 1)
-                if (x[i]) e = i;
-            m = {7'd0, x} << (5'd23 - e);
-            u16_to_f32 = (x == 16'd0) ? 32'd0 : {1'b0, 8'd127 + {3'd0, e}, m};
-        end
-    endfunction
-
     // ---------------------------------------------------------------- state
-    wire [15:0] hp0 = hp_flat[15:0],     hp1 = hp_flat[31:16];
-    wire [15:0] ht0 = heat_flat[15:0],   ht1 = heat_flat[31:16];
-    wire [15:0] bf0 = buffer_flat[15:0], bf1 = buffer_flat[31:16];
-    wire [15:0] pw0 = power_flat[15:0],  pw1 = power_flat[31:16];
+    wire        lr  = link_robot;
+    wire [15:0] hp0 = hp_flat[15:0], hp1 = hp_flat[31:16];
+    wire [7:0]  rf0 = rflags_flat[7:0], rf1 = rflags_flat[15:8];
+    wire [7:0]  l_flags = lr ? rf1 : rf0;
 
-    wire        lr       = link_robot;
-    wire [15:0] l_hp     = lr ? hp1 : hp0;
-    wire [15:0] l_heat   = lr ? ht1 : ht0;
-    wire [15:0] l_buffer = lr ? bf1 : bf0;
-    wire [15:0] l_power  = lr ? pw1 : pw0;
-    wire        l_alive  = lr ? alive_flat[1] : alive_flat[0];
-    wire [31:0] l_cur_p  = l_power * 32'd42667;     // mA at 24 V, x1024
+    // Per-robot block of 0xF101 (22 bytes). Built from plain wires: simulators
+    // do not re-evaluate continuous assigns through functions that read
+    // module signals.
+    wire [8*22-1:0] blk0 = {chassis_ds_flat[7:0], lock_s_flat[7:0], rflags_flat[7:0],
+                            yellow_flat[7:0], shots_flat[15:0], allowance_flat[15:0],
+                            cfg_power_limit, power_flat[15:0], buffer_flat[15:0],
+                            cfg_heat_limit, heat_flat[15:0], cfg_max_hp, hp_flat[15:0]};
+    wire [8*22-1:0] blk1 = {chassis_ds_flat[15:8], lock_s_flat[15:8], rflags_flat[15:8],
+                            yellow_flat[15:8], shots_flat[31:16], allowance_flat[31:16],
+                            cfg_power_limit, power_flat[31:16], buffer_flat[31:16],
+                            cfg_heat_limit, heat_flat[31:16], cfg_max_hp, hp_flat[31:16]};
+    wire [15:0] l_hp     = lr ? hp_flat[31:16]     : hp_flat[15:0];
+    wire [15:0] l_heat   = lr ? heat_flat[31:16]   : heat_flat[15:0];
+    wire [15:0] l_buffer = lr ? buffer_flat[31:16] : buffer_flat[15:0];
 
     // latched event data
     reg [7:0]  hurt_l, warn_lvl_l, warn_id_l, warn_cnt_l, shot_freq_l;
@@ -116,25 +118,21 @@ module arc_frame_gen (
     // ------------------------------------------------------------- payloads
     wire [8*11-1:0] pl_0001 = {32'd0, unix_time, remain, {1'b0, stage}, game_type};
     wire [8*1-1:0]  pl_0002 = {6'd0, winner};
-    // red_3 at byte 4, blue_3 at byte 20 (standard robots)
-    wire [8*32-1:0] pl_0003 = {80'd0, hp1, 112'd0, hp0, 32'd0};
+    // ally_1, ally_2, ally_3, ally_4, reserved, ally_7, outpost, base
+    wire [8*16-1:0] pl_0003 = {80'd0, l_hp, 32'd0};
     wire [8*3-1:0]  pl_0104 = {warn_cnt_l, warn_id_l, warn_lvl_l};
-    wire [8*13-1:0] pl_0201 = {{5'd0, l_alive, l_alive, 1'b1},
+    wire [8*13-1:0] pl_0201 = {{5'd0, l_flags[2], l_flags[3], l_flags[4]},
                                cfg_power_limit, cfg_heat_limit, cfg_cooling,
                                cfg_max_hp, l_hp, 8'd1, (lr ? 8'd103 : 8'd3)};
-    wire [8*16-1:0] pl_0202 = {16'd0, 16'd0, l_heat, l_buffer, u16_to_f32(l_power),
-                               l_cur_p[25:10], 16'd24000};
+    // reserved(2), reserved(2), reserved(4), buffer, 17 mm heat, 42 mm heat
+    wire [8*14-1:0] pl_0202 = {16'd0, l_heat, l_buffer, 64'd0};
     wire [8*1-1:0]  pl_0206 = hurt_l;
     wire [8*7-1:0]  pl_0207 = {shot_speed_l, shot_freq_l, 8'd1, 8'd1};
-    wire [8*49-1:0] pl_F101 = {cfg_hit_dmg, cfg_cooling, cfg_combat_time, rx_err, rx_ok,
-                               // robot 1
-                               {6'd0, red_card_flat[1], alive_flat[1]}, yellow_flat[15:8],
-                               cfg_power_limit, pw1, bf1, cfg_heat_limit, ht1, cfg_max_hp, hp1,
-                               // robot 0
-                               {6'd0, red_card_flat[0], alive_flat[0]}, yellow_flat[7:0],
-                               cfg_power_limit, pw0, bf0, cfg_heat_limit, ht0, cfg_max_hp, hp0,
-                               {4'd0, game_type}, {7'd0, lr}, {6'd0, winner}, remain,
-                               {7'd0, paused}, {5'd0, stage}};
+    wire [8*66-1:0] pl_F101 = {cfg_speed_limit, cfg_setup_time, cfg_hit_dmg, cfg_cooling,
+                               cfg_combat_time, rx_err, rx_ok,
+                               blk1, blk0,
+                               {4'd0, game_type}, {7'd0, lr}, win_reason, {6'd0, winner},
+                               remain, {3'd0, first_shot, first_dmg, paused}, {5'd0, stage}};
     wire [8*5-1:0]  pl_F102 = evq[ev_rp];
 
     // ----------------------------------------------------------- scheduling
@@ -165,17 +163,19 @@ module arc_frame_gen (
     reg [7:0]     seq;
 
     wire [7:0] cur_byte =
-        (b == 8'd0)       ? 8'hA5 :
-        (b == 8'd1)       ? plen :
-        (b == 8'd2)       ? 8'h00 :
-        (b == 8'd3)       ? seq :
-        (b == 8'd4)       ? crc8 :
-        (b == 8'd5)       ? cmd[7:0] :
-        (b == 8'd6)       ? cmd[15:8] :
-        (b < 8'd7 + plen) ? pl[7:0] :
+        (b == 8'd0)        ? 8'hA5 :
+        (b == 8'd1)        ? plen :
+        (b == 8'd2)        ? 8'h00 :
+        (b == 8'd3)        ? seq :
+        (b == 8'd4)        ? crc8 :
+        (b == 8'd5)        ? cmd[7:0] :
+        (b == 8'd6)        ? cmd[15:8] :
+        (b < 8'd7 + plen)  ? pl[7:0] :
         (b == 8'd7 + plen) ? crc16[7:0] : crc16[15:8];
 
     reg [NP-1:0] clr, set;
+    reg [3:0]    n_in;
+    reg [2:0]    wp;
 
     always @(posedge clk) begin
         fifo_wr <= 1'b0;
@@ -199,7 +199,7 @@ module arc_frame_gen (
                     seq  <= seq + 8'd1;
                 end
                 b <= b + 8'd1;
-            end else if (pick != {NP{1'b0}} && fifo_free >= 11'd64) begin
+            end else if (pick != {NP{1'b0}} && fifo_free >= 11'd80) begin
                 busy  <= 1'b1;
                 b     <= 8'd0;
                 crc8  <= 8'hFF;
@@ -213,20 +213,30 @@ module arc_frame_gen (
                     pick[P_STAT]:   begin cmd <= 16'h0001; plen <= 8'd11; pl <= pl_0001; end
                     pick[P_EV]:     begin cmd <= 16'hF102; plen <= 8'd5;  pl <= pl_F102; end
                     pick[P_RS]:     begin cmd <= 16'h0201; plen <= 8'd13; pl <= pl_0201; end
-                    pick[P_PH]:     begin cmd <= 16'h0202; plen <= 8'd16; pl <= pl_0202; end
-                    pick[P_HP]:     begin cmd <= 16'h0003; plen <= 8'd32; pl <= pl_0003; end
-                    default:        begin cmd <= 16'hF101; plen <= 8'd49; pl <= pl_F101; end
+                    pick[P_PH]:     begin cmd <= 16'h0202; plen <= 8'd14; pl <= pl_0202; end
+                    pick[P_HP]:     begin cmd <= 16'h0003; plen <= 8'd16; pl <= pl_0003; end
+                    default:        begin cmd <= 16'hF101; plen <= 8'd66; pl <= pl_F101; end
                 endcase
             end
 
-            // event queue: pop on frame start, push on event
+            // Event queue: pop one on frame start, push up to two (A then B).
+            // Events that do not fit are dropped (the queue only overflows if
+            // the browser link stalls).
             if (clr[P_EV]) ev_rp <= ev_rp + 3'd1;
-            if (ev_valid && (ev_n != 4'd8 || clr[P_EV])) begin
-                evq[ev_wp] <= {ev_hp, ev_detail, ev_kind, 7'd0, ev_robot};
-                ev_wp <= ev_wp + 3'd1;
+            n_in = 4'd0;
+            wp = ev_wp;
+            if (ev_valid[0] && ev_n + n_in < 4'd8 + (clr[P_EV] ? 4'd1 : 4'd0)) begin
+                evq[wp] <= {ev_hp[15:0], ev_detail[7:0], ev_kind[7:0], 7'd0, ev_robot[0]};
+                wp = wp + 3'd1;
+                n_in = n_in + 4'd1;
             end
-            ev_n <= ev_n - (clr[P_EV] ? 4'd1 : 4'd0)
-                         + ((ev_valid && (ev_n != 4'd8 || clr[P_EV])) ? 4'd1 : 4'd0);
+            if (ev_valid[1] && ev_n + n_in < 4'd8 + (clr[P_EV] ? 4'd1 : 4'd0)) begin
+                evq[wp] <= {ev_hp[31:16], ev_detail[15:8], ev_kind[15:8], 7'd0, ev_robot[1]};
+                wp = wp + 3'd1;
+                n_in = n_in + 4'd1;
+            end
+            ev_wp <= wp;
+            ev_n  <= ev_n + n_in - (clr[P_EV] ? 4'd1 : 4'd0);
 
             // periodic requests
             if (tick_20ms) begin
@@ -239,13 +249,13 @@ module arc_frame_gen (
             set = {NP{1'b0}};
             set[P_HURT]   = hurt_valid;
             set[P_SHOT]   = shot_valid;
-            set[P_WARN]   = warn_valid;
+            set[P_WARN]   = warn_valid || (tick_20ms && c50 == 6'd25);
             set[P_RESULT] = result_valid;
             set[P_STAT]   = stage_valid || (tick_20ms && c50 == 6'd0);
             set[P_RS]     = tick_20ms && c5 == 3'd0;
-            set[P_PH]     = tick_20ms;
+            set[P_PH]     = tick_20ms && c5 == 3'd1;
             set[P_HP]     = tick_20ms && c17 == 5'd0;
-            set[P_SRV]    = tick_20ms && c5 == 3'd2;
+            set[P_SRV]    = tick_20ms && c5 == 3'd3;
             pend <= (pend & ~clr) | set;
 
             if (hurt_valid) hurt_l <= hurt_byte;

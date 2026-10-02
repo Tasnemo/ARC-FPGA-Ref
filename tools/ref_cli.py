@@ -6,9 +6,10 @@
     python3 tools/ref_cli.py --port /dev/ttyUSB1 start     # send a command, then monitor
     python3 tools/ref_cli.py --port COM5 hit 0 2           # hit red armor 2
 
-Commands: monitor, prep, start, pause, resume, end, reset,
+Commands: monitor, setup, start, pause, resume, end, reset,
           hit <robot> <armor>, shoot <robot> [speed], yellow <robot>,
-          red <robot>, kill <robot>, revive <robot>, power <robot> <watts>
+          red <robot>, kill <robot>, revive <robot>, disconnect <robot>,
+          reconnect <robot>, power <robot> <watts>
 Robots: 0 = red, 1 = blue.
 """
 import argparse
@@ -19,7 +20,7 @@ import time
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 import arcref  # noqa: E402
 
-GAME = {"prep": 1, "start": 2, "pause": 3, "resume": 4, "end": 5, "reset": 6}
+GAME = {"setup": 1, "start": 2, "pause": 3, "resume": 4, "end": 5, "reset": 6}
 
 
 def build(cmd, args):
@@ -34,10 +35,8 @@ def build(cmd, args):
         return arcref.cmd_penalty(a[0], 2)
     if cmd == "red":
         return arcref.cmd_penalty(a[0], 3)
-    if cmd == "kill":
-        return arcref.cmd_life(a[0], False)
-    if cmd == "revive":
-        return arcref.cmd_life(a[0], True)
+    if cmd in ("kill", "revive", "disconnect", "reconnect"):
+        return arcref.cmd_life(a[0], ["kill", "revive", "disconnect", "reconnect"].index(cmd))
     if cmd == "power":
         return arcref.cmd_power(a[0], a[1])
     raise SystemExit(f"unknown command {cmd!r}")

@@ -42,9 +42,9 @@ module arc_ref_top #(
     wire         cmd_valid;
     wire [15:0]  cmd_id;
     wire [7:0]   cmd_len;
-    wire [127:0] cmd_data;
+    wire [191:0] cmd_data;
 
-    arc_rx_parser #(.MAXLEN(16)) u_rx (
+    arc_rx_parser #(.MAXLEN(24)) u_rx (
         .clk(clk), .rst(rst), .in_valid(rx_valid), .in_byte(rx_byte),
         .cmd_valid(cmd_valid), .cmd_id(cmd_id), .cmd_len(cmd_len), .cmd_data(cmd_data),
         .ok_count(rx_ok), .err_count(rx_err)
@@ -54,18 +54,18 @@ module arc_ref_top #(
     wire [2:0]  stage;
     wire        paused;
     wire [15:0] remain;
-    wire [1:0]  winner;
+    wire [1:0]  winner, first_dmg, first_shot;
+    wire [7:0]  win_reason;
     wire [3:0]  game_type;
     wire        link_robot;
     wire [31:0] unix_time;
     wire [15:0] cfg_combat_time, cfg_max_hp, cfg_heat_limit, cfg_cooling,
-                cfg_power_limit, cfg_hit_dmg;
-    wire [31:0] hp_flat, heat_flat, buffer_flat, power_flat;
-    wire [15:0] yellow_flat;
-    wire [1:0]  alive_flat, red_card_flat;
-    wire        ev_valid, ev_robot;
-    wire [7:0]  ev_kind, ev_detail;
-    wire [15:0] ev_hp;
+                cfg_power_limit, cfg_hit_dmg, cfg_setup_time, cfg_speed_limit, cfg_allowance;
+    wire [31:0] hp_flat, heat_flat, buffer_flat, power_flat, allowance_flat, shots_flat;
+    wire [15:0] yellow_flat, rflags_flat, lock_s_flat, chassis_ds_flat;
+    wire [1:0]  ev_valid, ev_robot;
+    wire [15:0] ev_kind, ev_detail;
+    wire [31:0] ev_hp;
     wire        hurt_valid, shot_valid, warn_valid, result_valid, stage_valid;
     wire [7:0]  hurt_byte, shot_freq, warn_level, warn_id, warn_count;
     wire [31:0] shot_speed;
@@ -74,15 +74,18 @@ module arc_ref_top #(
         .clk(clk), .rst(rst),
         .cmd_valid(cmd_valid), .cmd_id(cmd_id), .cmd_len(cmd_len), .cmd_data(cmd_data),
         .btn_hit(btn_press), .btn_target(sw_level[0]),
-        .tick_20ms(tick_20ms),
+        .tick_20ms(tick_20ms), .cfg_allowance(cfg_allowance),
         .stage(stage), .paused(paused), .remain(remain), .winner(winner),
+        .win_reason(win_reason), .first_dmg(first_dmg), .first_shot(first_shot),
         .game_type(game_type), .link_robot(link_robot), .unix_time(unix_time),
         .cfg_combat_time(cfg_combat_time), .cfg_max_hp(cfg_max_hp),
         .cfg_heat_limit(cfg_heat_limit), .cfg_cooling(cfg_cooling),
         .cfg_power_limit(cfg_power_limit), .cfg_hit_dmg(cfg_hit_dmg),
+        .cfg_setup_time(cfg_setup_time), .cfg_speed_limit(cfg_speed_limit),
         .hp_flat(hp_flat), .heat_flat(heat_flat), .buffer_flat(buffer_flat),
-        .power_flat(power_flat), .yellow_flat(yellow_flat),
-        .alive_flat(alive_flat), .red_card_flat(red_card_flat),
+        .power_flat(power_flat), .allowance_flat(allowance_flat), .shots_flat(shots_flat),
+        .yellow_flat(yellow_flat), .rflags_flat(rflags_flat),
+        .lock_s_flat(lock_s_flat), .chassis_ds_flat(chassis_ds_flat),
         .ev_valid(ev_valid), .ev_robot(ev_robot), .ev_kind(ev_kind),
         .ev_detail(ev_detail), .ev_hp(ev_hp),
         .hurt_valid(hurt_valid), .hurt_byte(hurt_byte),
@@ -103,13 +106,16 @@ module arc_ref_top #(
     arc_frame_gen u_gen (
         .clk(clk), .rst(rst), .tick_20ms(tick_20ms),
         .stage(stage), .paused(paused), .remain(remain), .winner(winner),
+        .win_reason(win_reason), .first_dmg(first_dmg), .first_shot(first_shot),
         .game_type(game_type), .link_robot(link_robot), .unix_time(unix_time),
         .cfg_combat_time(cfg_combat_time), .cfg_max_hp(cfg_max_hp),
         .cfg_heat_limit(cfg_heat_limit), .cfg_cooling(cfg_cooling),
         .cfg_power_limit(cfg_power_limit), .cfg_hit_dmg(cfg_hit_dmg),
+        .cfg_setup_time(cfg_setup_time), .cfg_speed_limit(cfg_speed_limit),
         .hp_flat(hp_flat), .heat_flat(heat_flat), .buffer_flat(buffer_flat),
-        .power_flat(power_flat), .yellow_flat(yellow_flat),
-        .alive_flat(alive_flat), .red_card_flat(red_card_flat),
+        .power_flat(power_flat), .allowance_flat(allowance_flat), .shots_flat(shots_flat),
+        .yellow_flat(yellow_flat), .rflags_flat(rflags_flat),
+        .lock_s_flat(lock_s_flat), .chassis_ds_flat(chassis_ds_flat),
         .rx_ok(rx_ok), .rx_err(rx_err),
         .ev_valid(ev_valid), .ev_robot(ev_robot), .ev_kind(ev_kind),
         .ev_detail(ev_detail), .ev_hp(ev_hp),
@@ -148,7 +154,7 @@ module arc_ref_top #(
     end
 
     assign led[0] = (stage == 3'd4) && (!paused || blink);
-    assign led[1] = alive_flat[0];
-    assign led[2] = alive_flat[1];
+    assign led[1] = rflags_flat[0];      // red alive
+    assign led[2] = rflags_flat[8];      // blue alive
     assign led[3] = flash_cnt != 0;
 endmodule

@@ -4,7 +4,7 @@
 // A frame that passes both CRCs produces a one-cycle cmd_valid pulse.
 // Frames longer than MAXLEN are counted as errors and dropped.
 module arc_rx_parser #(
-    parameter integer MAXLEN = 16
+    parameter integer MAXLEN = 24
 ) (
     input  wire                clk,
     input  wire                rst,

@@ -6,7 +6,7 @@
 module tb_arc_ref;
     `include "arc_crc.vh"
 
-    localparam integer CLK_HZ = 50_000;    // 1 s = 50k cycles
+    localparam integer CLK_HZ = 20_000;    // 1 s = 20k cycles
     localparam integer SEC    = CLK_HZ;
 
     reg clk = 0;
@@ -106,7 +106,7 @@ module tb_arc_ref;
     task send_frame;
         input [15:0] cmd;
         input [7:0]  len;
-        input [127:0] data;   // byte 0 in bits [7:0]
+        input [191:0] data;   // byte 0 in bits [7:0]
         input        corrupt;
         integer i, n;
         reg [7:0]  c8;
@@ -155,25 +155,41 @@ module tb_arc_ref;
             $finish;
         end
 
-        // TIME, CONFIG (1v1, link red, 10 s combat, 100 HP, heat 50, cool 10/s,
-        // 60 W, 10 dmg), START
-        send_frame(16'hF008, 8'd4, 128'd1700000000, 0);
-        send_frame(16'hF002, 8'd14,
-                   {16'd10, 16'd60, 16'd10, 16'd50, 16'd100, 16'd10, 8'd0, 8'd5}, 0);
-        send_frame(16'hF001, 8'd1, 128'd2, 0);
+        // Round 1. TIME; CONFIG: 1v1, link red, 30 s battle, 200 HP, heat 80,
+        // cooling 12/s, 120 W, 20 dmg, 3 s setup, 25 m/s, 10 projectiles.
+        send_frame(16'hF008, 8'd4, 192'd1700000000, 0);
+        send_frame(16'hF002, 8'd20,
+                   {16'd10, 16'd25, 16'd3, 16'd20, 16'd120, 16'd12, 16'd80,
+                    16'd200, 16'd30, 8'd0, 8'd5}, 0);
+        send_frame(16'hF001, 8'd1, 192'd1, 0);            // setup period (3 s)
+        run_for(SEC / 2);
+        send_frame(16'hF001, 8'd1, 192'd3, 0);            // timeout: pause 1 s
+        run_for(SEC);
+        send_frame(16'hF001, 8'd1, 192'd4, 0);            // resume
+        run_for(SEC * 23);                                // 2.5 + 15 + 5 s, into battle
 
-        run_for(SEC * 20 + SEC / 2);           // self-check 15 s + countdown 5 s
-
-        send_frame(16'hF003, 8'd2, {8'd1, 8'd0}, 0);      // HIT red armor 1
-        press_button(2);                                  // button: red armor 2
-        for (s = 0; s < 7; s = s + 1)                     // 7 shots, 25.0 m/s
-            send_frame(16'hF004, 8'd6, {32'h41C80000, 8'd5, 8'd0}, 0);
-        send_frame(16'hF005, 8'd2, {8'd2, 8'd1}, 0);      // yellow blue (no 0x0104)
-        send_frame(16'hF005, 8'd2, {8'd2, 8'd0}, 0);      // yellow red
-        send_frame(16'hF007, 8'd3, {16'd100, 8'd1}, 0);   // blue draws 100 W
+        send_frame(16'hF003, 8'd2, {8'd1, 8'd0}, 0);      // red armor 1: 200 -> 180
+        press_button(2);                                  // red armor 2: -> 160
+        send_frame(16'hF003, 8'd3, {8'd1, 8'd0, 8'd1}, 0);// blue collision: 200 -> 198
+        for (s = 0; s < 9; s = s + 1)                     // 9 red shots, 25.0 m/s
+            send_frame(16'hF004, 8'd8, {16'd250, 32'h41C80000, 8'd5, 8'd0}, 0);
+        run_for(SEC / 5);                                 // heat 90 > 80: locked
+        send_frame(16'hF004, 8'd8, {16'd250, 32'h41C80000, 8'd5, 8'd0}, 0); // rejected
+        send_frame(16'hF004, 8'd8, {16'd310, 32'h41F80000, 8'd5, 8'd1}, 0); // blue 31 m/s
+        send_frame(16'hF004, 8'd8, {16'd250, 32'h41C80000, 8'd5, 8'd1}, 0); // rejected
+        send_frame(16'hF005, 8'd2, {8'd2, 8'd0}, 0);      // red yellow: -30 -> 130
+        send_frame(16'hF005, 8'd2, {8'd2, 8'd0}, 0);      // again <30 s: -60 -> 70
+        send_frame(16'hF007, 8'd3, {16'd200, 8'd1}, 0);   // blue 200 W > 120 W
         send_frame(16'hF003, 8'd2, {8'd3, 8'd0}, 1);      // corrupt CRC16, dropped
+        run_for(SEC * 31);                                // time-out: blue wins on HP
 
-        run_for(SEC * 11);                                // combat ends
+        // Round 2: skip setup, three yellows on blue -> red card -> defeat.
+        send_frame(16'hF001, 8'd1, 192'd6, 0);            // reset
+        send_frame(16'hF001, 8'd1, 192'd2, 0);            // straight to init
+        run_for(SEC * 20 + SEC / 2);
+        for (s = 0; s < 3; s = s + 1)
+            send_frame(16'hF005, 8'd2, {8'd2, 8'd1}, 0);
+        run_for(SEC);
 
         axi_read(6'h18, v);
         $display("rx ok=%0d err=%0d", v[15:0], v[31:16]);
