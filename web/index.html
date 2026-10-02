@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ARC Referee Console</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <div>
+        <h1>ARC Referee System</h1>
+        <p class="sub">FPGA referee &middot; Zybo Z7-10</p>
+      </div>
+    </div>
+    <div class="link">
+      <span id="linkPill" class="pill off">No link</span>
+      <span id="linkStats" class="link-stats"></span>
+      <button id="btnConnect" class="btn primary">Connect board</button>
+      <button id="btnOtherPort" class="btn small" title="Show every serial port, not just the Zybo's FTDI chip">Other port…</button>
+      <button id="btnDemo" class="btn">Demo mode</button>
+      <button id="btnDisconnect" class="btn" hidden>Disconnect</button>
+    </div>
+  </header>
+
+  <p id="serialWarning" class="banner warn" hidden>
+    This browser has no Web Serial. Use Chrome or Edge on desktop, and open the page from
+    <code>http://localhost</code> (see README). Demo mode still works.
+  </p>
+
+  <div id="portHint" class="banner warn" hidden>
+    <strong>Connected, but no referee data yet.</strong>
+    <ul>
+      <li><strong>Mac:</strong> the Zybo shows up as two ports (e.g. <code>…usbserial-210279A</code> and <code>…B</code>, or two
+        "Digilent Adept USB Device" entries). The UART is usually the <strong>second</strong> one. Disconnect and pick the other.</li>
+      <li><strong>Windows:</strong> pick the COM port for "USB Serial Port". If none appears, install the FTDI VCP driver (see README).</li>
+      <li>Check the board is running the referee: green DONE LED on, and LD3 flashes when you press a button here.
+        If the board text below says "core not found", the bitstream is missing.</li>
+    </ul>
+  </div>
+
+  <main>
+    <section class="scoreboard" aria-label="Scoreboard">
+      <div class="team" data-team="0"></div>
+      <div class="clock">
+        <div id="stageName" class="stage">Not started</div>
+        <div id="clockTime" class="time">--:--</div>
+        <div id="clockSub" class="clock-sub">&nbsp;</div>
+        <div id="resultBanner" class="result" hidden></div>
+      </div>
+      <div class="team" data-team="1"></div>
+    </section>
+
+    <section class="controls">
+      <div class="panel match">
+        <h2>Match control</h2>
+        <div class="btn-grid">
+          <button class="btn" data-game="1">Preparation</button>
+          <button class="btn primary" data-game="2">Start match</button>
+          <button class="btn" data-game="3">Pause</button>
+          <button class="btn" data-game="4">Resume</button>
+          <button class="btn danger" data-game="5">End match</button>
+          <button class="btn" data-game="6">Reset</button>
+        </div>
+
+        <details id="configPanel" class="config">
+          <summary>Rules config <span class="hint">(only before a match)</span></summary>
+          <form id="configForm">
+            <label>Game type
+              <select name="gameType">
+                <option value="5">RMUL 1v1</option>
+                <option value="4">RMUL 3v3</option>
+                <option value="1">RMUC</option>
+              </select>
+            </label>
+            <label>Link robot
+              <select name="link">
+                <option value="0">Red 3</option>
+                <option value="1">Blue 103</option>
+              </select>
+            </label>
+            <label>Combat time (s) <input name="combatTime" type="number" min="5" max="900" value="180"></label>
+            <label>Max HP <input name="maxHp" type="number" min="1" max="5000" value="200"></label>
+            <label>Heat limit <input name="heatLimit" type="number" min="1" max="2000" value="100"></label>
+            <label>Cooling / s <input name="cooling" type="number" min="0" max="2000" value="20"></label>
+            <label>Chassis power limit (W) <input name="powerLimit" type="number" min="1" max="500" value="60"></label>
+            <label>Damage per hit <input name="hitDmg" type="number" min="0" max="1000" value="10"></label>
+            <button class="btn primary" type="submit">Apply to board</button>
+          </form>
+        </details>
+      </div>
+
+      <div class="panel robot" data-robot="0"></div>
+      <div class="panel robot" data-robot="1"></div>
+    </section>
+
+    <section class="lower">
+      <div class="panel log">
+        <div class="panel-head">
+          <h2>Event log</h2>
+          <button id="btnClearLog" class="btn small">Clear</button>
+        </div>
+        <ol id="eventLog" class="event-log"></ol>
+      </div>
+
+      <div class="panel linkview">
+        <h2>Robot link view <span id="linkRobotName" class="hint"></span></h2>
+        <p class="hint">What a robot plugged into this referee would receive, decoded from the real frames.</p>
+        <dl id="linkFields" class="fields"></dl>
+        <table class="rates">
+          <thead><tr><th>cmd_id</th><th>name</th><th>Hz</th><th>total</th></tr></thead>
+          <tbody id="rateTable"></tbody>
+        </table>
+      </div>
+
+      <div class="panel raw">
+        <div class="panel-head">
+          <h2>Raw frames</h2>
+          <label class="check"><input id="hide0202" type="checkbox" checked> hide 0x0202</label>
+          <button id="btnPauseRaw" class="btn small">Pause</button>
+        </div>
+        <pre id="rawLog" class="raw-log"></pre>
+        <pre id="boardText" class="board-text" hidden></pre>
+      </div>
+    </section>
+  </main>
+
+  <template id="teamTemplate">
+    <div class="team-head">
+      <span class="team-name"></span>
+      <span class="badge link-badge" hidden>LINK</span>
+      <span class="badge state-badge"></span>
+    </div>
+    <div class="hp">
+      <span class="hp-value">---</span><span class="hp-max"></span>
+    </div>
+    <div class="bar hp-bar"><div class="fill"></div><div class="ghost"></div></div>
+    <div class="gauges">
+      <div class="gauge">
+        <span class="g-label">Barrel heat</span>
+        <div class="bar small heat-bar"><div class="fill"></div></div>
+        <span class="g-value heat-value"></span>
+      </div>
+      <div class="gauge">
+        <span class="g-label">Buffer energy</span>
+        <div class="bar small buffer-bar"><div class="fill"></div></div>
+        <span class="g-value buffer-value"></span>
+      </div>
+      <div class="gauge">
+        <span class="g-label">Chassis power</span>
+        <span class="g-value power-value"></span>
+      </div>
+      <div class="gauge">
+        <span class="g-label">Cards</span>
+        <span class="g-value cards"></span>
+      </div>
+    </div>
+  </template>
+
+  <template id="robotTemplate">
+    <h2 class="robot-title"></h2>
+    <div class="robot-body">
+      <svg class="armor" viewBox="0 0 120 120" role="group" aria-label="Armor plates, click to register a hit">
+        <rect class="chassis" x="30" y="30" width="60" height="60" rx="8"></rect>
+        <circle class="turret" cx="60" cy="60" r="13"></circle>
+        <rect class="barrel" x="57" y="34" width="6" height="18" rx="2"></rect>
+        <rect class="plate" data-armor="0" x="40" y="10" width="40" height="12" rx="3"><title>Armor 0 (front)</title></rect>
+        <rect class="plate" data-armor="1" x="10" y="40" width="12" height="40" rx="3"><title>Armor 1 (left)</title></rect>
+        <rect class="plate" data-armor="2" x="40" y="98" width="40" height="12" rx="3"><title>Armor 2 (back)</title></rect>
+        <rect class="plate" data-armor="3" x="98" y="40" width="12" height="40" rx="3"><title>Armor 3 (right)</title></rect>
+      </svg>
+      <div class="robot-actions">
+        <div class="row">
+          <button class="btn primary act-shoot">Fire 17 mm</button>
+          <label class="inline">at <input class="shoot-speed" type="number" step="0.1" min="0" max="40" value="25.0"> m/s</label>
+        </div>
+        <label class="slider">Chassis draw <output class="power-out">0 W</output>
+          <input class="power-in" type="range" min="0" max="200" value="0">
+        </label>
+        <div class="row">
+          <button class="btn warn act-yellow">Yellow card</button>
+          <button class="btn danger act-red">Red card</button>
+          <button class="btn danger outline act-forfeit">Forfeit</button>
+        </div>
+        <div class="row">
+          <button class="btn act-kill">Kill</button>
+          <button class="btn act-revive">Revive</button>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
