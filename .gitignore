@@ -1,0 +1,9 @@
+build/
+hw/sim/out/
+__pycache__/
+*.pyc
+.Xil/
+*.jou
+*.log
+*.str
+.DS_Store
