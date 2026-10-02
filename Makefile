@@ -4,7 +4,7 @@ IVERILOG ?= iverilog
 VVP      ?= vvp
 RTL      := $(wildcard hw/rtl/*.v)
 
-.PHONY: all sim test serve bitstream firmware program clean
+.PHONY: all sim test bundle serve bitstream firmware program clean
 
 all: test
 
@@ -20,6 +20,11 @@ sim: hw/sim/out/tb.vvp
 # Simulation, then the browser protocol code and emulator against its output.
 test: sim
 	node web/test/protocol.test.mjs
+	python3 tools/bundle_web.py --check
+
+# Single-file console (double-click on Windows/macOS, no web server needed).
+bundle:
+	python3 tools/bundle_web.py
 
 # Web Serial needs a secure context; localhost counts.
 serve:

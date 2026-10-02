@@ -1,0 +1,8 @@
+# Keep LF in the repo so the bundle check and Tcl/shell scripts behave the
+# same on Windows and macOS checkouts.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.png binary
+*.bin binary
+*.bit binary
+*.xsa binary
