@@ -169,10 +169,15 @@ check(ally["ally_1"] == f3["robots"][0]["hp"] and ally["ally_7"] == f3["robots"]
 
 # ------------------------------------------------------------- 3v3 round 2
 print("3v3 round 2")
+r4 = rounds[3]
 f4 = finals[3]
+check(any(e["kind"] == "red" and e["robot"] == 5 for e in events(r4)) and not events(r4, "respawn")
+      and f4["robots"][5]["hp"] == 0 and not f4["robots"][5]["respawning"],
+      "red-carded Sentry is ejected and does not respawn")
+check([x["teams"][1]["vp"] for x in of(r4, 0xF101) if x["stage"] == 4][-1] == 180, "ejection costs 20 VP")
 check(f4["winner"] == 2 and f4["win_reason"] == "forfeit" and f4["teams"][0]["vp"] == 0,
       "3v3 forfeit: red VP 0, blue wins")
-check(f4["rx_ok"] == 81 and f4["rx_err"] == 1, f"rx counters 81 ok / 1 bad ({f4['rx_ok']}/{f4['rx_err']})")
+check(f4["rx_ok"] == 82 and f4["rx_err"] == 1, f"rx counters 82 ok / 1 bad ({f4['rx_ok']}/{f4['rx_err']})")
 
 print("PASS" if not fails else f"{len(fails)} FAILED")
 sys.exit(1 if fails else 0)

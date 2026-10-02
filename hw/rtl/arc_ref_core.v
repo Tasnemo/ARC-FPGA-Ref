@@ -353,6 +353,7 @@ module arc_ref_core #(
         input [2:0]  r;
         input [15:0] nh;
         input        attack;   // counts as attack damage for the other team
+        input        eject;    // red card: no respawn (red[r] is set this same cycle)
         reg          t;
         begin
             t = team_of(r);
@@ -368,7 +369,7 @@ module arc_ref_core #(
                     if (heat_lk[r] == 2'd1) heat_lk[r] <= 2'd0;
                     invinc[r] <= 16'd0;
                     weak[r]   <= 1'b0;
-                    if (!red[r]) resp_t[r] <= {defeats[r] + 8'd1, 5'd0} + {defeats[r] + 8'd1, 4'd0}
+                    if (!red[r] && !eject) resp_t[r] <= {defeats[r] + 8'd1, 5'd0} + {defeats[r] + 8'd1, 4'd0}
                                               + {defeats[r] + 8'd1, 1'b0};   // 50 x n ticks
                     defeats[r] <= defeats[r] + 8'd1;
                     lose_vp(t, 16'd20);
@@ -479,7 +480,7 @@ module arc_ref_core #(
                 end else begin
                     d  = (kind == 2'd1) ? DMG_COLLISION : (kind == 2'd2) ? DMG_42 : DMG_17;
                     nh = sat_sub(hp[r], d);
-                    set_hp(r, nh, kind != 2'd1);
+                    set_hp(r, nh, kind != 2'd1, 1'b0);
                     emit_ev(1'b0, r, EV_HIT, {button, kind == 2'd1, kind == 2'd2, 1'b0, armor}, nh);
                     if (r == link_robot) begin
                         hurt_valid <= 1'b1;
@@ -506,12 +507,12 @@ module arc_ref_core #(
             warn(r, 8'd2, robot_id(r), cnt);
             if (cnt >= 8'd3) begin
                 red[r] <= 1'b1;
-                set_hp(r, 16'd0, 1'b1);
+                set_hp(r, 16'd0, 1'b1, 1'b1);
                 emit_ev(1'b0, r, EV_YELLOW, cnt, 16'd0);
                 emit_ev(1'b1, r, EV_RED, 8'd1, 16'd0);
             end else begin
                 nh = penalty_hp(hp[r], p15[r] << k);
-                if (nh != hp[r]) set_hp(r, nh, 1'b1);
+                if (nh != hp[r]) set_hp(r, nh, 1'b1, 1'b0);
                 emit_ev(1'b0, r, EV_YELLOW, cnt, nh);
                 if (mode3 && role_of(r) == 3'd2) ch_off[r] <= SENTRY_CUT;
             end
@@ -602,7 +603,7 @@ module arc_ref_core #(
                 if (sec_t[r] == 4'd9 && alive(r)) begin
                     if (disc[r]) begin
                         nh = sat_sub(hp[r], p5[r]);
-                        set_hp(r, nh, 1'b0);
+                        set_hp(r, nh, 1'b0, 1'b0);
                         emit_ev(1'b1, r, EV_OFFLINE_HP, 8'd0, nh);   // slot A may hold an unlock
                     end else if (mode3 && zone[r] == 2'd1) begin
                         heal = hp[r] + p25[r];
@@ -779,7 +780,7 @@ module arc_ref_core #(
                     8'd2: yellow_card(r);
                     8'd3: begin
                         red[r] <= 1'b1;
-                        set_hp(r, 16'd0, 1'b1);
+                        set_hp(r, 16'd0, 1'b1, 1'b1);
                         emit_ev(1'b0, r, EV_RED, 8'd0, 16'd0);
                         warn(r, 8'd3, robot_id(r), 8'd1);
                     end
@@ -798,7 +799,7 @@ module arc_ref_core #(
                 endcase
                 C_LIFE: case (a)
                     8'd0: if (fielded[r]) begin
-                        set_hp(r, 16'd0, 1'b0);
+                        set_hp(r, 16'd0, 1'b0, 1'b0);
                         emit_ev(1'b0, r, EV_KILL, 8'd0, 16'd0);
                     end
                     8'd1: if (fielded[r]) begin
@@ -970,7 +971,7 @@ module arc_ref_core #(
                 pr = pbit[0] ? 3'd0 : pbit[1] ? 3'd1 : pbit[2] ? 3'd2 :
                      pbit[3] ? 3'd3 : pbit[4] ? 3'd4 : 3'd5;
                 if (alive(pr)) begin
-                    set_hp(pr, penalty_hp(hp[pr], p5[pr]), pen_kind == EV_YELLOW_TEAM);
+                    set_hp(pr, penalty_hp(hp[pr], p5[pr]), pen_kind == EV_YELLOW_TEAM, 1'b0);
                     emit_ev(1'b0, pr, pen_kind, (pen_kind == EV_YELLOW_BOTH) ? both_yellow : 8'd0,
                             penalty_hp(hp[pr], p5[pr]));
                 end

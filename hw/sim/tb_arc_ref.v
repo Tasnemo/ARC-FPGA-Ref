@@ -231,10 +231,12 @@ module tb_arc_ref;
         send_frame(16'hF005, 8'd2, {8'd2, 8'd2}, 0);      // red Sentry yellow
         run_for(SEC * 60);                                // time-out: blue wins on VP
 
-        // 3v3 round 2: red forfeits.
+        // 3v3 round 2: red card on the blue Sentry (no respawn), then red forfeits.
         send_frame(16'hF001, 8'd1, 192'd6, 0);
         send_frame(16'hF001, 8'd1, 192'd2, 0);
         run_for(SEC * 20 + SEC / 2);
+        send_frame(16'hF005, 8'd2, {8'd3, 8'd5}, 0);
+        run_for(SEC * 6);
         send_frame(16'hF005, 8'd2, {8'd4, 8'd1}, 0);
         run_for(SEC / 2);
 
