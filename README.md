@@ -15,8 +15,9 @@ controlled from a web page in Chrome.
                                        └─────────────────────────────────────────────┘
 ```
 
-All referee logic runs in the FPGA fabric and follows the **ARCC 2026 1v1
-rules** (Events Manual V1.6). The board sends **real referee frames** in the
+All referee logic runs in the FPGA fabric and follows the **ARCC 2026 rules**
+(Events Manual V1.6), in either **1v1** (one Infantry per side) or **3v3** (Hero,
+Infantry and Sentry per side, with Victory Points, capture point, respawn and gold). The board sends **real referee frames** in the
 2026 protocol layouts (`0x0001` game status, `0x0201` robot status, `0x0202`
 buffer/heat, `0x0206` hurt, and others), so a robot's existing referee
 parser should work against it. Later you could route the same byte stream out a Pmod UART to a
@@ -95,18 +96,23 @@ FTDI devices. **Other port…** shows everything, if you use a different USB-UAR
 
 ### 4. Run a match
 
-1. Optionally pick a **preset** or adjust **Rules config**, then click **Apply**
-   (only before a match). The default is the ARCC 2026 1v1 Infantry.
+1. Pick **1v1** or **3v3** in match control (only before a match). That loads the
+   ARCC 2026 stats for every robot. **Rules config** lets you change times, the
+   link robot and any robot's stats, then **Apply**.
 2. **Start setup period** runs the setup countdown (pause it for timeouts), then
-   the 15 s referee init, the 5 s countdown and the 2-minute battle. **Skip to
-   init** jumps straight to the init period.
-3. During the battle:
-   - Click armor plates, or press **BTN0–3** on the board (SW0 picks red or blue), to register hits. Choose 17 mm, 42 mm or collision per robot.
-   - **Fire** shots to add barrel heat. A speed over 25 m/s locks the launcher.
+   the 15 s referee init, the 5 s countdown and the battle. **Skip to init** jumps
+   straight to the init period.
+3. During the battle, per robot (in 3v3, pick Hero / Infantry / Sentry at the top
+   of each control panel):
+   - Click armor plates, or press **BTN0–3** on the board, to register hits. SW0 picks the team and SW2:1 the robot. Choose 17 mm, 42 mm or collision.
+   - **Fire** shots to add barrel heat. A speed over the limit locks the launcher.
    - Drag **Chassis draw** past the limit to drain buffer energy and trigger the 5 s chassis cut.
    - Give yellow or red cards, a both-teams yellow, a forfeit, or simulate an abnormal disconnection.
-   - A defeated robot ends the round. Otherwise the 1v1 tie-breaks decide it at time-out, and the console shows why that side won.
-4. **Robot link view** shows the real frames decoded the way the link robot
+   - 3v3: mark where the robot is (field, resupply zone, capture point), and buy projectiles with gold in the resupply zone. Infantry chassis and launcher types can be chosen until the battle starts.
+4. The scoreboard shows HP, heat, buffer, projectiles, cards and launcher/chassis
+   status. In 3v3 it also shows VP, gold, damage dealt, respawn timers and the
+   capture point. At the end it shows the winner and why.
+5. **Robot link view** shows the real frames decoded the way the link robot
    would see them.
 
 The terminal client works on both OSes too:
@@ -118,10 +124,10 @@ The terminal client works on both OSes too:
 `make test` needs only `iverilog`, Python 3 and Node 18+, with no Xilinx tools.
 It:
 
-1. simulates the RTL end to end (`hw/sim/tb_arc_ref.v`),
-2. decodes and checks every byte the board would send (`tools/check_sim.py`),
-3. checks `web/js/protocol.js` against that output, and replays the scenario
-   through the JS emulator, which must end with the same HP as the RTL,
+1. simulates the RTL end to end (`hw/sim/tb_arc_ref.v`: two 1v1 and two 3v3 rounds),
+2. decodes and checks every byte the board would send (`tools/check_sim.py`, 58 checks),
+3. checks `web/js/protocol.js` against that output, and replays all four rounds
+   through the JS emulator, which must end exactly like the RTL,
 4. checks that `web/arc-ref-console.html` is up to date.
 
 After editing anything in `web/`, run `make bundle` (or `python3 tools/bundle_web.py`) and commit the regenerated file.
@@ -132,9 +138,12 @@ the commands from the Makefile directly if you don't have `make`.
 
 ## Not done yet / to verify
 
-- **Only the 1v1 event is modelled.** 3v3 presets change the robot stats, but
-  victory points, the capture point, gold coins and respawn aren't implemented.
-  `docs/protocol.md` lists the rules covered and the ones that aren't.
+- **A few rules aren't modelled**, such as the pilot screen blackout after a
+  yellow card and the 2 s RFID expiry on the capture point. `docs/protocol.md`
+  lists everything covered and not covered.
+- **Check that it fits the Z7-10 in Vivado.** The 3v3 version tracks six robots;
+  yosys estimates about 6,700 flip-flops (19 % of the chip) and 14 DSPs, but I
+  couldn't get a LUT count here. If it doesn't fit, the Z7-20 has 3× the room.
 - **Check the protocol against ARC's V1.3.0.** The layouts come from an
   open-source implementation of the 2026 protocol V1.2.0 (the official PDF
   couldn't be downloaded here). `0x0207` still uses the older layout.
