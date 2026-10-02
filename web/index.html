@@ -49,6 +49,7 @@
         <div id="clockTime" class="time">--:--</div>
         <div id="clockSub" class="clock-sub">&nbsp;</div>
         <div id="resultBanner" class="result" hidden></div>
+        <div id="resultWhy" class="result-why" hidden></div>
       </div>
       <div class="team" data-team="1"></div>
     </section>
@@ -57,22 +58,25 @@
       <div class="panel match">
         <h2>Match control</h2>
         <div class="btn-grid">
-          <button class="btn" data-game="1">Preparation</button>
-          <button class="btn primary" data-game="2">Start match</button>
-          <button class="btn" data-game="3">Pause</button>
+          <button class="btn primary" data-game="1" title="Starts the setup period countdown, then init, countdown and battle">Start setup period</button>
+          <button class="btn" data-game="2" title="Skip the setup period and go straight to the 15 s referee init">Skip to init</button>
+          <button class="btn" data-game="3" title="Official or team timeout">Pause / timeout</button>
           <button class="btn" data-game="4">Resume</button>
-          <button class="btn danger" data-game="5">End match</button>
+          <button class="btn danger" data-game="5">End round</button>
           <button class="btn" data-game="6">Reset</button>
+          <button id="btnBothYellow" class="btn warn wide" title="Both teams yellow: every robot loses 5 % max HP">Both teams yellow card</button>
         </div>
 
         <details id="configPanel" class="config">
           <summary>Rules config <span class="hint">(only before a match)</span></summary>
           <form id="configForm">
+            <label class="wide">Preset
+              <select name="preset" id="presetSelect"></select>
+            </label>
             <label>Game type
               <select name="gameType">
-                <option value="5">RMUL 1v1</option>
-                <option value="4">RMUL 3v3</option>
-                <option value="1">RMUC</option>
+                <option value="5">1v1 (RMUL 1v1)</option>
+                <option value="4">3v3 (RMUL 3v3)</option>
               </select>
             </label>
             <label>Link robot
@@ -81,12 +85,15 @@
                 <option value="1">Blue 103</option>
               </select>
             </label>
-            <label>Combat time (s) <input name="combatTime" type="number" min="5" max="900" value="180"></label>
+            <label>Setup period (s) <input name="setupTime" type="number" min="0" max="900" value="120"></label>
+            <label>Battle (s) <input name="combatTime" type="number" min="5" max="900" value="120"></label>
             <label>Max HP <input name="maxHp" type="number" min="1" max="5000" value="200"></label>
-            <label>Heat limit <input name="heatLimit" type="number" min="1" max="2000" value="100"></label>
-            <label>Cooling / s <input name="cooling" type="number" min="0" max="2000" value="20"></label>
-            <label>Chassis power limit (W) <input name="powerLimit" type="number" min="1" max="500" value="60"></label>
-            <label>Damage per hit <input name="hitDmg" type="number" min="0" max="1000" value="10"></label>
+            <label>17 mm damage <input name="hitDmg" type="number" min="0" max="1000" value="20"></label>
+            <label>Barrel heat limit <input name="heatLimit" type="number" min="1" max="2000" value="80"></label>
+            <label>Cooling / s <input name="cooling" type="number" min="0" max="2000" value="12"></label>
+            <label>Chassis power limit (W) <input name="powerLimit" type="number" min="1" max="500" value="120"></label>
+            <label>Speed limit (m/s) <input name="speedLimit" type="number" min="1" max="60" value="25"></label>
+            <label>Projectiles <input name="allowance" type="number" min="0" max="5000" value="200"></label>
             <button class="btn primary" type="submit">Apply to board</button>
           </form>
         </details>
@@ -153,9 +160,18 @@
         <span class="g-value power-value"></span>
       </div>
       <div class="gauge">
+        <span class="g-label">Projectiles left</span>
+        <span class="g-value ammo-value"></span>
+      </div>
+      <div class="gauge">
         <span class="g-label">Cards</span>
         <span class="g-value cards"></span>
       </div>
+    </div>
+    <div class="chips">
+      <span class="chip chip-shooter"></span>
+      <span class="chip chip-chassis"></span>
+      <span class="chip chip-gimbal"></span>
     </div>
   </template>
 
@@ -174,8 +190,14 @@
       <div class="robot-actions">
         <div class="row">
           <button class="btn primary act-shoot">Fire 17 mm</button>
-          <label class="inline">at <input class="shoot-speed" type="number" step="0.1" min="0" max="40" value="25.0"> m/s</label>
+          <label class="inline">at <input class="shoot-speed" type="number" step="0.1" min="0" max="60" value="24.0"> m/s</label>
         </div>
+        <fieldset class="row hit-kind">
+          <legend>Armor click registers</legend>
+          <label class="inline"><input type="radio" value="0" checked> 17 mm</label>
+          <label class="inline"><input type="radio" value="2"> 42 mm</label>
+          <label class="inline"><input type="radio" value="1"> collision</label>
+        </fieldset>
         <label class="slider">Chassis draw <output class="power-out">0 W</output>
           <input class="power-in" type="range" min="0" max="200" value="0">
         </label>
@@ -187,6 +209,7 @@
         <div class="row">
           <button class="btn act-kill">Kill</button>
           <button class="btn act-revive">Revive</button>
+          <button class="btn act-disconnect" title="Abnormal disconnection: outputs off, -5 % max HP per second">Disconnect</button>
         </div>
       </div>
     </div>

@@ -1,15 +1,16 @@
-// Cross-checks web/js/protocol.js against the RTL simulation output and the
-// JS emulator against the same rules. Run after `make sim`:
+// Cross-checks web/js/protocol.js against the RTL simulation output, and the
+// JS emulator against the same scenario. Run after `make sim`:
 //   node web/test/protocol.test.mjs
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { CMD, FrameDecoder, commands, crc8, crc16, decodePayload, encode } from '../js/protocol.js';
+import { SimLink } from '../js/sim.js';
 
-// Known-answer CRCs: table entries from the referee protocol appendix.
+// Known-answer CRCs: table entries from the referee protocol.
 assert.equal(crc8(Uint8Array.of(0x01), 0, 1, 0), 0x5e);
 assert.equal(crc16(Uint8Array.of(0x01), 0, 1, 0), 0x1189);
 
-// Round trip through encode/decode, split into odd-sized chunks with junk in between.
+// Round trip, split into odd-sized chunks with junk in between.
 const frames = [encode(...commands.shoot(1, 7, 27.5), 9), encode(...commands.game(2), 10)];
 const stream = Uint8Array.from([...new TextEncoder().encode('hi\r\n'), ...frames[0], 0x00, 0x13, ...frames[1]]);
 const dec = new FrameDecoder();
@@ -20,55 +21,83 @@ for (let i = 0; i < stream.length; i += 3) got.push(...dec.push(stream.subarray(
 assert.equal(got.length, 2);
 assert.equal(got[0].cmd, CMD.C_SHOOT);
 assert.equal(got[0].seq, 9);
+assert.equal(new DataView(got[0].data.buffer).getUint16(6, true), 275, 'speed in 0.1 m/s');
 assert.ok(skipped.startsWith('hi'));
 
-// Decode the RTL simulation dump, if present.
+// Replay hw/sim/tb_arc_ref.v through the emulator (20 ms ticks).
+function emulate() {
+  const em = new SimLink();
+  const out = new FrameDecoder();
+  const seen = [];
+  em.onData = (b) => seen.push(...out.push(b));
+  em.reset();
+  const tx = (c) => em.write(encode(...c));
+  const run = (s) => { for (let i = 0; i < Math.round(s * 50); i++) em.tick20(); };
+  const shot = (r, v) => tx(commands.shoot(r, 5, v));
+  tx(commands.time(1700000000));
+  tx(commands.config({ gameType: 5, link: 0, combatTime: 30, maxHp: 200, heatLimit: 80, cooling: 12,
+    powerLimit: 120, hitDmg: 20, setupTime: 3, speedLimit: 25, allowance: 10 }));
+  tx(commands.game(1));
+  run(0.5);
+  tx(commands.game(3));
+  run(1);
+  tx(commands.game(4));
+  run(23);
+  tx(commands.hit(0, 1));
+  tx(commands.hit(0, 2));                  // BTN2 in the RTL test
+  tx(commands.hit(1, 0, 1));               // collision
+  for (let i = 0; i < 9; i++) shot(0, 25);
+  run(0.2);
+  shot(0, 25);
+  shot(1, 31);
+  shot(1, 25);
+  tx(commands.penalty(0, 2));
+  tx(commands.penalty(0, 2));
+  tx(commands.power(1, 200));
+  run(31);
+  const round1 = decodePayload(CMD.SERVER_STATE, seen.filter((f) => f.cmd === CMD.SERVER_STATE).at(-1).data);
+  tx(commands.game(6));
+  tx(commands.game(2));
+  run(20.5);
+  for (let i = 0; i < 3; i++) tx(commands.penalty(1, 2));
+  run(1);
+  const round2 = decodePayload(CMD.SERVER_STATE, seen.filter((f) => f.cmd === CMD.SERVER_STATE).at(-1).data);
+  return { round1, round2, frames: seen };
+}
+
+const summary = (s) => ({
+  stage: s.stage, winner: s.winner, winReason: s.winReason,
+  robots: s.robots.map((r) => ({ hp: r.hp, allowance: r.allowance, shots: r.shots, yellow: r.yellow, redCard: r.redCard })),
+});
+
+const em = emulate();
+assert.equal(em.round1.winner, 2, 'emulator round 1: blue wins on HP');
+assert.equal(em.round2.winner, 1, 'emulator round 2: red wins by defeat');
+for (const f of em.frames) assert.ok(decodePayload(f.cmd, f.data), `emulator frame 0x${f.cmd.toString(16)} decodes`);
+
+// Decode the RTL simulation dump, if present, and compare.
 let hexDump;
 try {
   hexDump = readFileSync(new URL('../../hw/sim/out/tx_bytes.hex', import.meta.url), 'utf8');
 } catch {
-  console.log('protocol.js ok (no simulation dump; run `make sim` to cross-check the RTL)');
+  console.log('protocol.js and sim.js ok (no simulation dump; run `make sim` to cross-check the RTL)');
   process.exit(0);
 }
 const bytes = Uint8Array.from(hexDump.trim().split(/\s+/), (h) => parseInt(h, 16));
 const d2 = new FrameDecoder();
-const sim = d2.push(bytes);
+const rtl = d2.push(bytes);
 assert.equal(d2.bad, 0, 'RTL frames decode without CRC errors');
 const counts = {};
-for (const f of sim) counts[f.cmd] = (counts[f.cmd] || 0) + 1;
+for (const f of rtl) counts[f.cmd] = (counts[f.cmd] || 0) + 1;
 for (const c of [0x0001, 0x0002, 0x0003, 0x0104, 0x0201, 0x0202, 0x0206, 0x0207, 0xf101, 0xf102]) {
   assert.ok(counts[c] > 0, `RTL produced 0x${c.toString(16)}`);
-  for (const f of sim.filter((x) => x.cmd === c)) assert.ok(decodePayload(c, f.data), `decode 0x${c.toString(16)}`);
+  for (const f of rtl.filter((x) => x.cmd === c)) assert.ok(decodePayload(c, f.data), `decode 0x${c.toString(16)}`);
 }
-const last = decodePayload(CMD.SERVER_STATE, sim.filter((f) => f.cmd === CMD.SERVER_STATE).at(-1).data);
-assert.equal(last.stage, 5);
-assert.equal(last.rxOk, 14);
-assert.equal(last.rxErr, 1);
-const shot = decodePayload(CMD.SHOOT, sim.find((f) => f.cmd === CMD.SHOOT).data);
-assert.equal(shot.speed, 25);
-console.log(`protocol.js ok; decoded ${sim.length} RTL frames`, counts);
-
-// Replay the testbench scenario through the JS emulator; it must end the same
-// way as the RTL (same rules, same 100 ms schedule).
-const { SimLink } = await import('../js/sim.js');
-const em = new SimLink();
-const out = new FrameDecoder();
-const emFrames = [];
-em.onData = (b) => emFrames.push(...out.push(b));
-em.reset();
-const tx = (c) => em.write(encode(...c));
-await tx(commands.time(1700000000));
-await tx(commands.config({ gameType: 5, link: 0, combatTime: 10, maxHp: 100, heatLimit: 50, cooling: 10, powerLimit: 60, hitDmg: 10 }));
-await tx(commands.game(2));
-for (let i = 0; i < 1025; i++) em.tick20();
-await tx(commands.hit(0, 1));
-await tx(commands.hit(0, 2));                // the RTL test uses BTN2 here
-for (let i = 0; i < 7; i++) await tx(commands.shoot(0, 5, 25));
-await tx(commands.penalty(1, 2));
-await tx(commands.penalty(0, 2));
-await tx(commands.power(1, 100));
-for (let i = 0; i < 550; i++) em.tick20();
-const emLast = decodePayload(CMD.SERVER_STATE, emFrames.filter((f) => f.cmd === CMD.SERVER_STATE).at(-1).data);
-assert.equal(emLast.stage, 5);
-assert.deepEqual(emLast.robots.map((r) => r.hp), last.robots.map((r) => r.hp), 'emulator matches RTL final HP');
-console.log('sim.js matches RTL: final HP', emLast.robots.map((r) => r.hp));
+const srv = rtl.filter((f) => f.cmd === CMD.SERVER_STATE).map((f) => decodePayload(CMD.SERVER_STATE, f.data));
+const firstEnd = srv.findIndex((s) => s.stage === 5);
+const rtlRound1 = srv[srv.findIndex((s, i) => i > firstEnd && s.stage !== 5) - 1];
+const rtlRound2 = srv.at(-1);
+assert.deepEqual(summary(em.round1), summary(rtlRound1), 'emulator matches RTL after round 1');
+assert.deepEqual(summary(em.round2), summary(rtlRound2), 'emulator matches RTL after round 2');
+console.log(`protocol.js ok; decoded ${rtl.length} RTL frames`);
+console.log('sim.js matches RTL:', JSON.stringify([summary(rtlRound1), summary(rtlRound2)].map((s) => s.robots.map((r) => r.hp))));

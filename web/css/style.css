@@ -124,6 +124,16 @@ main { padding: 16px 20px 32px; display: grid; gap: 16px; max-width: 1500px; mar
 .gauge .bar { grid-column: 1 / -1; }
 .g-label { color: var(--muted); font-size: 12px; }
 .g-value { font: 12px var(--mono); text-align: right; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px; }
+.chip { font: 600 11px var(--sans); padding: 2px 8px; border-radius: 999px; background: var(--panel-2); color: var(--muted); border: 1px solid var(--line); }
+.chip.on { color: var(--ok); }
+.chip.bad { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, transparent); background: #2a1216; }
+.chip.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+.hit-kind { border: 0; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 2px 14px; }
+.hit-kind legend { font-size: 12px; color: var(--muted); padding: 0; margin-bottom: 4px; }
+.hit-kind label { gap: 5px; color: var(--text); }
+.inline input[type="radio"], input[type="radio"] { width: auto; padding: 0; margin: 0; accent-color: var(--c, var(--blue)); }
+.result-why { color: var(--muted); font-size: 12px; margin-top: 2px; }
 .cards .card { display: inline-block; width: 10px; height: 14px; border-radius: 2px; margin-left: 3px; vertical-align: middle; }
 .cards .card.yellow { background: var(--warn); }
 .cards .card.red { background: var(--danger); }
@@ -152,7 +162,8 @@ main { padding: 16px 20px 32px; display: grid; gap: 16px; max-width: 1500px; mar
 .config summary { cursor: pointer; font-weight: 600; }
 .config form { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; margin-top: 10px; }
 .config label { display: grid; gap: 3px; font-size: 12px; color: var(--muted); }
-.config button { grid-column: 1 / -1; }
+.config button, .config .wide { grid-column: 1 / -1; }
+.btn-grid .wide { grid-column: 1 / -1; }
 input, select {
   font: 13px var(--sans); color: var(--text); background: #0b0e13;
   border: 1px solid var(--line); border-radius: 6px; padding: 5px 7px; min-width: 0;
@@ -195,7 +206,9 @@ input[type="range"] { padding: 0; accent-color: var(--c, var(--blue)); }
 .event-log .hpv { color: var(--muted); }
 .event-log .k-yellow { color: var(--warn); }
 .event-log .k-red, .event-log .k-forfeit, .event-log .k-kill { color: var(--danger); }
-.event-log .k-revive { color: var(--ok); }
+.event-log .k-revive, .event-log .k-reconnect, .event-log .k-unlocked { color: var(--ok); }
+.event-log .k-locked, .event-log .k-chassis-cut, .event-log .k-yellow-both, .event-log .k-disconnect { color: var(--warn); }
+.event-log .k-offline-hp, .event-log .k-defeated { color: var(--danger); }
 
 .fields { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 10px 0; font-size: 12px; }
 .fields dt { color: var(--muted); }

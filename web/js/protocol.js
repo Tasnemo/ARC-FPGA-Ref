@@ -1,4 +1,5 @@
 // ARC referee link protocol (docs/protocol.md). Mirrors tools/arcref.py.
+// Real frames follow the RoboMaster 2026 University Series protocol (ARCC 2026).
 //
 // Frame: SOF 0xA5 | data_length u16 | seq u8 | CRC8 | cmd_id u16 | data | CRC16
 // All multi-byte fields are little-endian.
@@ -30,27 +31,49 @@ export const CMD = {
 export const CMD_NAMES = {
   0x0001: 'game_status',
   0x0002: 'game_result',
-  0x0003: 'game_robot_HP',
+  0x0003: 'ally_robot_HP',
   0x0104: 'referee_warning',
   0x0201: 'robot_status',
-  0x0202: 'power_heat_data',
+  0x0202: 'buffer_heat_data',
   0x0206: 'hurt_data',
   0x0207: 'shoot_data',
   0xf101: 'server_state',
   0xf102: 'server_event',
 };
 
-export const STAGES = ['Not started', 'Preparation', 'Self-check', 'Countdown', 'Combat', 'Settlement'];
+export const STAGES = ['Not started', 'Setup period', 'Referee init', 'Countdown', 'Battle', 'Settlement'];
 export const GAME_TYPES = { 1: 'RMUC', 2: 'RMUT', 3: 'RMUA', 4: 'RMUL 3v3', 5: 'RMUL 1v1' };
 export const EVENT_KINDS = {
-  1: 'hit', 2: 'shot', 3: 'overheat', 4: 'overpower', 5: 'yellow',
-  6: 'red', 7: 'forfeit', 8: 'kill', 9: 'revive',
+  1: 'hit', 2: 'shot', 3: 'locked', 4: 'chassis-cut', 5: 'yellow', 6: 'red', 7: 'forfeit',
+  8: 'kill', 9: 'revive', 10: 'disconnect', 11: 'reconnect', 12: 'offline-hp', 13: 'unlocked',
+  14: 'yellow-both',
 };
-export const HURT_REASONS = {
-  0: 'armor hit', 1: 'module offline', 2: 'over speed', 3: 'barrel heat', 4: 'chassis power', 5: 'collision',
+export const LOCKS = {
+  1: 'barrel heat over limit', 2: 'barrel heat over limit + 100 (rest of round)',
+  3: 'over speed (15 s)', 4: 'over speed (20 s)', 5: 'over speed (rest of round)', 6: 'out of projectiles',
 };
-export const GAME = { PREP: 1, START: 2, PAUSE: 3, RESUME: 4, END: 5, RESET: 6 };
-export const PENALTY = { YELLOW: 2, RED: 3, FORFEIT: 4 };
+export const WIN_REASONS = {
+  0: '', 1: 'opponent defeated', 2: 'more remaining HP', 3: 'opponent took first damage',
+  4: 'more shots fired', 5: 'fired first', 6: 'tie: lighter robot wins (referee decides)', 7: 'forfeit',
+};
+export const HURT_REASONS = { 0: 'armor hit', 1: 'module offline', 5: 'collision' };
+export const GAME = { SETUP: 1, START: 2, PAUSE: 3, RESUME: 4, END: 5, RESET: 6 };
+export const PENALTY = { BOTH_YELLOW: 1, YELLOW: 2, RED: 3, FORFEIT: 4 };
+export const LIFE = { KILL: 0, REVIVE: 1, DISCONNECT: 2, RECONNECT: 3 };
+export const HIT_KIND = { MM17: 0, COLLISION: 1, MM42: 2 };
+
+// Robot stat presets from the ARCC 2026 Events Manual. The referee core
+// always plays the 1v1 winning rules; 3v3 presets only change the numbers.
+export const PRESETS = {
+  '1v1': { label: '1v1 Infantry (ARCC 2026)', gameType: 5, combatTime: 120, setupTime: 120,
+    maxHp: 200, heatLimit: 80, cooling: 12, powerLimit: 120, hitDmg: 20, speedLimit: 25, allowance: 200 },
+  infHp: { label: '3v3 Infantry: HP + Cooldown priority', gameType: 4, combatTime: 300, setupTime: 180,
+    maxHp: 350, heatLimit: 88, cooling: 24, powerLimit: 75, hitDmg: 20, speedLimit: 25, allowance: 500 },
+  infPower: { label: '3v3 Infantry: Power + Burst priority', gameType: 4, combatTime: 300, setupTime: 180,
+    maxHp: 300, heatLimit: 230, cooling: 14, powerLimit: 90, hitDmg: 20, speedLimit: 25, allowance: 500 },
+  sentry: { label: '3v3 Sentry', gameType: 4, combatTime: 300, setupTime: 180,
+    maxHp: 400, heatLimit: 260, cooling: 30, powerLimit: 100, hitDmg: 20, speedLimit: 25, allowance: 750 },
+};
 export const ROBOT_IDS = [3, 103];
 
 const CRC8_TABLE = new Uint8Array(256);
@@ -147,7 +170,7 @@ export class FrameDecoder {
 
 // ----------------------------------------------------------------- payloads
 function robotBlock(v, o) {
-  const flags = v.getUint8(o + 15);
+  const f = v.getUint8(o + 19);
   return {
     hp: v.getUint16(o, true),
     maxHp: v.getUint16(o + 2, true),
@@ -156,9 +179,19 @@ function robotBlock(v, o) {
     buffer: v.getUint16(o + 8, true),
     power: v.getUint16(o + 10, true),
     powerLimit: v.getUint16(o + 12, true),
-    yellow: v.getUint8(o + 14),
-    alive: !!(flags & 1),
-    redCard: !!(flags & 2),
+    allowance: v.getUint16(o + 14, true),
+    shots: v.getUint16(o + 16, true),
+    yellow: v.getUint8(o + 18),
+    alive: !!(f & 1),
+    redCard: !!(f & 2),
+    shooterOn: !!(f & 4),
+    chassisOn: !!(f & 8),
+    gimbalOn: !!(f & 16),
+    disconnected: !!(f & 32),
+    heatLocked: !!(f & 64),
+    speedLocked: !!(f & 128),
+    speedLockS: v.getUint8(o + 20),
+    chassisCutDs: v.getUint8(o + 21),
   };
 }
 
@@ -177,8 +210,8 @@ export function decodePayload(cmd, data) {
         return { winner: data[0] };
       case CMD.ROBOT_HP: {
         const hp = [];
-        for (let i = 0; i < 16; i++) hp.push(v.getUint16(i * 2, true));
-        return { red3: hp[2], blue3: hp[10], all: hp };
+        for (let i = 0; i < 8; i++) hp.push(v.getUint16(i * 2, true));
+        return { ally3: hp[2], all: hp };
       }
       case CMD.REFEREE_WARNING:
         return { level: data[0], offender: data[1], count: data[2] };
@@ -196,33 +229,31 @@ export function decodePayload(cmd, data) {
           shooterOn: !!(data[12] & 4),
         };
       case CMD.POWER_HEAT:
-        return {
-          voltage: v.getUint16(0, true),
-          current: v.getUint16(2, true),
-          power: v.getFloat32(4, true),
-          buffer: v.getUint16(8, true),
-          heat17_1: v.getUint16(10, true),
-          heat17_2: v.getUint16(12, true),
-          heat42: v.getUint16(14, true),
-        };
+        return { buffer: v.getUint16(8, true), heat17: v.getUint16(10, true), heat42: v.getUint16(12, true) };
       case CMD.HURT:
         return { armor: data[0] & 0xf, reason: data[0] >> 4 };
       case CMD.SHOOT:
         return { bulletType: data[0], shooter: data[1], freq: data[2], speed: v.getFloat32(3, true) };
       case CMD.SERVER_STATE:
+        if (data.length < 66) return null;
         return {
           stage: data[0],
           paused: !!(data[1] & 1),
+          firstDmg: (data[1] >> 1) & 3,
+          firstShot: (data[1] >> 3) & 3,
           remain: v.getUint16(2, true),
           winner: data[4],
-          link: data[5],
-          gameType: data[6],
-          robots: [robotBlock(v, 7), robotBlock(v, 23)],
-          rxOk: v.getUint16(39, true),
-          rxErr: v.getUint16(41, true),
-          combatTime: v.getUint16(43, true),
-          cooling: v.getUint16(45, true),
-          hitDmg: v.getUint16(47, true),
+          winReason: data[5],
+          link: data[6],
+          gameType: data[7],
+          robots: [robotBlock(v, 8), robotBlock(v, 30)],
+          rxOk: v.getUint16(52, true),
+          rxErr: v.getUint16(54, true),
+          combatTime: v.getUint16(56, true),
+          cooling: v.getUint16(58, true),
+          hitDmg: v.getUint16(60, true),
+          setupTime: v.getUint16(62, true),
+          speedLimit: v.getUint16(64, true),
         };
       case CMD.EVENT:
         return { robot: data[0], kind: data[1], detail: data[2], hp: v.getUint16(3, true) };
@@ -243,24 +274,22 @@ function bytes(n, fill) {
 
 export const commands = {
   game: (action) => [CMD.C_GAME, Uint8Array.of(action)],
-  config: (c) => [CMD.C_CONFIG, bytes(14, (v) => {
+  config: (c) => [CMD.C_CONFIG, bytes(20, (v) => {
     v.setUint8(0, c.gameType);
     v.setUint8(1, c.link);
-    v.setUint16(2, c.combatTime, true);
-    v.setUint16(4, c.maxHp, true);
-    v.setUint16(6, c.heatLimit, true);
-    v.setUint16(8, c.cooling, true);
-    v.setUint16(10, c.powerLimit, true);
-    v.setUint16(12, c.hitDmg, true);
+    [c.combatTime, c.maxHp, c.heatLimit, c.cooling, c.powerLimit, c.hitDmg,
+      c.setupTime, c.speedLimit, c.allowance].forEach((x, i) => v.setUint16(2 + 2 * i, x, true));
   })],
-  hit: (robot, armor) => [CMD.C_HIT, Uint8Array.of(robot, armor)],
-  shoot: (robot, freq, speed) => [CMD.C_SHOOT, bytes(6, (v) => {
+  hit: (robot, armor, kind = HIT_KIND.MM17) => [CMD.C_HIT, Uint8Array.of(robot, armor, kind)],
+  // speed goes twice: as f32 for 0x0207, and in 0.1 m/s for the fabric's limit check
+  shoot: (robot, freq, speed) => [CMD.C_SHOOT, bytes(8, (v) => {
     v.setUint8(0, robot);
     v.setUint8(1, freq);
     v.setFloat32(2, speed, true);
+    v.setUint16(6, Math.round(speed * 10), true);
   })],
   penalty: (robot, level) => [CMD.C_PENALTY, Uint8Array.of(robot, level)],
-  life: (robot, revive) => [CMD.C_LIFE, Uint8Array.of(robot, revive ? 1 : 0)],
+  life: (robot, action) => [CMD.C_LIFE, Uint8Array.of(robot, action)],
   power: (robot, watts) => [CMD.C_POWER, bytes(3, (v) => {
     v.setUint8(0, robot);
     v.setUint16(1, watts, true);

@@ -1,6 +1,6 @@
 import {
-  CMD, CMD_NAMES, EVENT_KINDS, GAME, GAME_TYPES, HURT_REASONS, PENALTY, ROBOT_IDS, STAGES,
-  FrameDecoder, commands, decodePayload, encode, hex,
+  CMD, CMD_NAMES, EVENT_KINDS, GAME, GAME_TYPES, HURT_REASONS, LIFE, LOCKS, PENALTY, PRESETS,
+  ROBOT_IDS, STAGES, WIN_REASONS, FrameDecoder, commands, decodePayload, encode, hex,
 } from './protocol.js';
 import { SerialLink } from './serial.js';
 import { SimLink } from './sim.js';
@@ -9,7 +9,8 @@ const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
 const TEAM_NAMES = ['RED 3', 'BLUE 103'];
-const TEAM_CLASS = ['red', 'blue'];
+const CONFIG_FIELDS = ['combatTime', 'setupTime', 'maxHp', 'hitDmg', 'heatLimit', 'cooling',
+  'powerLimit', 'speedLimit', 'allowance'];
 
 const state = {
   link: null,
@@ -34,7 +35,7 @@ const state = {
 const teams = $$('.team').map((el) => {
   el.append($('#teamTemplate').content.cloneNode(true));
   const r = Number(el.dataset.team);
-  $('.team-name', el).textContent = `${TEAM_NAMES[r]} · STANDARD`;
+  $('.team-name', el).textContent = `${TEAM_NAMES[r]} · INFANTRY`;
   return {
     el,
     linkBadge: $('.link-badge', el),
@@ -49,7 +50,11 @@ const teams = $$('.team').map((el) => {
     bufferFill: $('.buffer-bar .fill', el),
     bufferValue: $('.buffer-value', el),
     powerValue: $('.power-value', el),
+    ammoValue: $('.ammo-value', el),
     cards: $('.cards', el),
+    chipShooter: $('.chip-shooter', el),
+    chipChassis: $('.chip-chassis', el),
+    chipGimbal: $('.chip-gimbal', el),
   };
 });
 
@@ -63,17 +68,20 @@ const robots = $$('.panel.robot').map((el) => {
     speed: $('.shoot-speed', el),
     powerIn: $('.power-in', el),
     powerOut: $('.power-out', el),
+    disconnect: $('.act-disconnect', el),
   };
+  $$('.hit-kind input', el).forEach((x) => { x.name = `hitKind${r}`; });
+  const hitKind = () => Number($('.hit-kind input:checked', el)?.value || 0);
   ui.plates.forEach((p) => {
     p.setAttribute('tabindex', '0');
     const fire = () => {
-      if (!el.classList.contains('disabled')) send(commands.hit(r, Number(p.dataset.armor)));
+      if (!el.classList.contains('disabled')) send(commands.hit(r, Number(p.dataset.armor), hitKind()));
     };
     p.addEventListener('click', fire);
     p.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fire(); } });
   });
   $('.act-shoot', el).addEventListener('click', () => {
-    const speed = Math.max(0, Math.min(40, parseFloat(ui.speed.value) || 0));
+    const speed = Math.max(0, Math.min(60, parseFloat(ui.speed.value) || 0));
     send(commands.shoot(r, 5, speed));
   });
   let powerTimer = null;
@@ -89,31 +97,50 @@ const robots = $$('.panel.robot').map((el) => {
   $('.act-forfeit', el).addEventListener('click', () => {
     if (confirm(`${TEAM_NAMES[r]} forfeits? The match ends.`)) send(commands.penalty(r, PENALTY.FORFEIT));
   });
-  $('.act-kill', el).addEventListener('click', () => send(commands.life(r, false)));
-  $('.act-revive', el).addEventListener('click', () => send(commands.life(r, true)));
+  $('.act-kill', el).addEventListener('click', () => send(commands.life(r, LIFE.KILL)));
+  $('.act-revive', el).addEventListener('click', () => send(commands.life(r, LIFE.REVIVE)));
+  ui.disconnect.addEventListener('click', () => {
+    const offline = state.server?.robots[r]?.disconnected;
+    send(commands.life(r, offline ? LIFE.RECONNECT : LIFE.DISCONNECT));
+  });
   return ui;
 });
 
 $$('[data-game]').forEach((b) => {
   b.addEventListener('click', () => {
     const a = Number(b.dataset.game);
-    if (a === GAME.END && !confirm('End the match now?')) return;
+    if (a === GAME.END && !confirm('End the round now? The winner is decided by the 1v1 criteria.')) return;
     send(commands.game(a));
   });
+});
+$('#btnBothYellow').addEventListener('click', () => send(commands.penalty(0, PENALTY.BOTH_YELLOW)));
+
+const presetSelect = $('#presetSelect');
+for (const [key, p] of Object.entries(PRESETS)) presetSelect.append(new Option(p.label, key));
+presetSelect.append(new Option('Custom', 'custom'));
+presetSelect.addEventListener('change', () => {
+  const p = PRESETS[presetSelect.value];
+  if (!p) return;
+  const form = $('#configForm');
+  form.gameType.value = String(p.gameType);
+  for (const k of CONFIG_FIELDS) form[k].value = p[k];
+  configDirty = true;
 });
 
 $('#configForm').addEventListener('submit', (e) => {
   e.preventDefault();
   const f = new FormData(e.target);
   const n = (k) => Math.max(0, Math.min(0xffff, Math.round(Number(f.get(k)) || 0)));
-  send(commands.config({
-    gameType: n('gameType'), link: n('link'), combatTime: n('combatTime'), maxHp: n('maxHp'),
-    heatLimit: n('heatLimit'), cooling: n('cooling'), powerLimit: n('powerLimit'), hitDmg: n('hitDmg'),
-  }));
+  const c = { gameType: n('gameType'), link: n('link') };
+  for (const k of CONFIG_FIELDS) c[k] = n(k);
+  send(commands.config(c));
   configDirty = false;
 });
 let configDirty = false;
-$('#configForm').addEventListener('input', () => { configDirty = true; });
+$('#configForm').addEventListener('input', (e) => {
+  configDirty = true;
+  if (e.target !== presetSelect) presetSelect.value = 'custom';
+});
 
 $('#btnClearLog').addEventListener('click', () => { $('#eventLog').replaceChildren(); });
 $('#btnPauseRaw').addEventListener('click', (e) => {
@@ -219,7 +246,7 @@ function matchClock() {
   const s = state.server;
   if (!s) return '';
   if (s.stage === 4) return fmtTime(s.remain);
-  return ['idle', 'prep', 'check', 'count', '', 'end'][s.stage] || '';
+  return ['idle', 'setup', 'init', 'count', '', 'end'][s.stage] || '';
 }
 
 function addLogLine(robot, cls, text, hpText = '') {
@@ -248,42 +275,54 @@ function addLogLine(robot, cls, text, hpText = '') {
   return li;
 }
 
+function eventText(e) {
+  switch (e.kind) {
+    case 1: {
+      const what = e.detail & 0x40 ? 'collision' : e.detail & 0x20 ? '42 mm hit' : '17 mm hit';
+      return `${what} on armor ${e.detail & 0xf}${e.detail & 0x80 ? ' (board button)' : ''}`;
+    }
+    case 3: return `launcher locked: ${LOCKS[e.detail] || e.detail}`;
+    case 4: return 'buffer energy empty: chassis cut for 5 s';
+    case 5: return `yellow card #${e.detail}`;
+    case 6: return e.detail === 1 ? 'red card (third yellow): ejected' : 'red card: ejected';
+    case 7: return 'forfeits the round';
+    case 8: return 'killed by referee';
+    case 9: return 'revived by referee';
+    case 10: return 'abnormal disconnection: outputs off';
+    case 11: return 'reconnected';
+    case 12: return 'offline: -5 % max HP';
+    case 13: return e.detail === 1 ? 'launcher unlocked (heat back to 0)' : 'launcher unlocked (speed lock over)';
+    case 14: return `both teams yellow #${e.detail}: -5 %`;
+    default: return EVENT_KINDS[e.kind] || `event ${e.kind}`;
+  }
+}
+
 function logEvent(e) {
-  const kind = EVENT_KINDS[e.kind] || `event ${e.kind}`;
-  let text = kind;
-  if (e.kind === 1) {
-    text = `armor ${e.detail & 0xf} hit${e.detail & 0x80 ? ' (board button)' : ''}`;
-    flashPlate(e.robot, e.detail & 0xf);
-  } else if (e.kind === 2) text = 'fired 17 mm';
-  else if (e.kind === 3) text = 'barrel overheat';
-  else if (e.kind === 4) text = 'chassis over power';
-  else if (e.kind === 5) text = `yellow card #${e.detail}`;
-  else if (e.kind === 6) text = 'red card';
-  else if (e.kind === 7) text = 'forfeits';
-  else if (e.kind === 8) text = 'killed by referee';
-  else if (e.kind === 9) text = 'revived';
-  if (e.kind === 2) return; // shots are frequent; heat gauge shows them
-  // Overheat/overpower deduct every 100 ms; fold a run into one line.
+  const kind = EVENT_KINDS[e.kind] || `event-${e.kind}`;
+  if (e.kind === 1) flashPlate(e.robot, e.detail & 0xf);
+  if (e.kind === 2) return; // shots are frequent; heat and projectile gauges show them
+  const text = eventText(e);
+  // Offline drain repeats every second; fold a run into one line.
   const last = state.lastLog;
-  if ((e.kind === 3 || e.kind === 4) && last && last.robot === e.robot && last.kind === e.kind
-      && last.li.isConnected && performance.now() - last.at < 300) {
+  if (e.kind === 12 && last && last.robot === e.robot && last.kind === e.kind && last.li.isConnected) {
     last.n++;
-    last.at = performance.now();
     last.li.children[1].lastChild.textContent = `${text} ×${last.n}`;
     last.li.children[2].textContent = `${e.hp} HP`;
   } else {
     const li = addLogLine(e.robot, `k-${kind}`, text, `${e.hp} HP`);
-    state.lastLog = { li, robot: e.robot, kind: e.kind, n: 1, at: performance.now() };
+    state.lastLog = { li, robot: e.robot, kind: e.kind, n: 1 };
   }
-  if (e.hp === 0 && [1, 3, 4].includes(e.kind)) addLogLine(e.robot, 'k-kill', 'destroyed');
-  teams[e.robot].el.classList.remove('flash');
-  void teams[e.robot].el.offsetWidth;
-  teams[e.robot].el.classList.add('flash');
+  if (e.hp === 0 && [1, 6, 8, 12].includes(e.kind)) addLogLine(e.robot, 'k-defeated', 'defeated');
+  if ([1, 5, 12, 14].includes(e.kind)) {
+    teams[e.robot].el.classList.remove('flash');
+    void teams[e.robot].el.offsetWidth;
+    teams[e.robot].el.classList.add('flash');
+  }
 }
 
 function logReal(cmd, d) {
   if (cmd === CMD.GAME_RESULT) {
-    addLogLine(null, 'k-revive', `match over: ${['draw', 'RED wins', 'BLUE wins'][d.winner] || '?'}`);
+    addLogLine(null, 'k-revive', `round over: ${['draw', 'RED wins', 'BLUE wins'][d.winner] || '?'}`);
   }
 }
 
@@ -311,7 +350,8 @@ function renderTeams(s) {
       t.hpValue.textContent = '---';
       t.hpMax.textContent = '';
       t.hpFill.style.width = t.hpGhost.style.width = '0%';
-      t.heatValue.textContent = t.bufferValue.textContent = t.powerValue.textContent = '';
+      t.heatValue.textContent = t.bufferValue.textContent = t.powerValue.textContent = t.ammoValue.textContent = '';
+      for (const c of [t.chipShooter, t.chipChassis, t.chipGimbal]) { c.textContent = ''; c.hidden = true; }
       t.heatFill.style.width = t.bufferFill.style.width = '0%';
       t.stateBadge.textContent = 'OFFLINE';
       t.stateBadge.className = 'badge state-badge';
@@ -330,10 +370,26 @@ function renderTeams(s) {
     t.bufferFill.style.width = `${pct(r.buffer, 60)}%`;
     t.bufferValue.textContent = `${r.buffer} J`;
     t.powerValue.textContent = `${r.power} / ${r.powerLimit} W`;
+    t.ammoValue.textContent = `${r.allowance} (${r.shots} fired)`;
     t.linkBadge.hidden = s.link !== i;
     const dead = !r.alive;
-    t.stateBadge.textContent = r.redCard ? 'RED CARD' : dead ? 'DESTROYED' : 'ONLINE';
-    t.stateBadge.className = `badge state-badge${dead ? ' dead' : ''}`;
+    t.stateBadge.textContent = r.redCard ? 'EJECTED' : dead ? 'DEFEATED' : r.disconnected ? 'OFFLINE' : 'ONLINE';
+    let shooter = ['on', 'Launcher on'];
+    if (!r.shooterOn) {
+      if (r.speedLocked) shooter = ['bad', r.speedLockS === 255 ? 'Launcher locked: speed (round)' : `Launcher locked: speed ${r.speedLockS} s`];
+      else if (r.heatLocked) shooter = ['bad', 'Launcher locked: heat'];
+      else if (r.allowance === 0 && r.alive) shooter = ['warn', 'No projectiles'];
+      else shooter = ['', 'Launcher off'];
+    }
+    const chassis = r.chassisOn ? ['on', 'Chassis on']
+      : r.chassisCutDs ? ['bad', `Chassis cut ${(r.chassisCutDs / 10).toFixed(1)} s`] : ['', 'Chassis off'];
+    const gimbal = r.disconnected ? ['bad', 'Disconnected'] : r.gimbalOn ? ['on', 'Gimbal on'] : ['', 'Gimbal off'];
+    for (const [chip, [cls, text]] of [[t.chipShooter, shooter], [t.chipChassis, chassis], [t.chipGimbal, gimbal]]) {
+      chip.hidden = false;
+      chip.className = `chip ${cls}`;
+      chip.textContent = text;
+    }
+    t.stateBadge.className = `badge state-badge${dead || r.disconnected ? ' dead' : ''}`;
     t.el.classList.toggle('dead', dead);
     const cards = [];
     for (let k = 0; k < Math.min(r.yellow, 8); k++) cards.push('<span class="card yellow"></span>');
@@ -354,14 +410,15 @@ function renderClock(s) {
     timeEl.className = 'time';
     sub.innerHTML = '&nbsp;';
     banner.hidden = true;
+    $('#resultWhy').hidden = true;
     return;
   }
   stageEl.textContent = s.paused ? `${STAGES[s.stage]} · paused` : STAGES[s.stage] || `Stage ${s.stage}`;
   stageEl.className = `stage${s.stage === 4 ? ' combat' : ''}${s.paused ? ' paused' : ''}`;
-  if (s.stage === 0 || s.stage === 1) timeEl.textContent = fmtTime(s.combatTime);
+  if (s.stage === 0) timeEl.textContent = fmtTime(s.combatTime);
   else if (s.stage === 5) timeEl.textContent = '0:00';
   else timeEl.textContent = fmtTime(s.remain);
-  timeEl.className = `time${s.stage === 2 || s.stage === 3 ? ' countdown' : ''}`;
+  timeEl.className = `time${s.stage >= 1 && s.stage <= 3 ? ' countdown' : ''}`;
   sub.textContent = `${GAME_TYPES[s.gameType] || `type ${s.gameType}`} · link ${TEAM_NAMES[s.link]}`;
   banner.hidden = s.stage !== 5;
   if (s.stage === 5) {
@@ -369,6 +426,9 @@ function renderClock(s) {
     banner.textContent = w === 1 ? 'RED WINS' : w === 2 ? 'BLUE WINS' : 'DRAW';
     banner.className = `result ${w === 1 ? 'red' : w === 2 ? 'blue' : 'draw'}`;
   }
+  const why = $('#resultWhy');
+  why.hidden = s.stage !== 5 || !WIN_REASONS[s.winReason];
+  why.textContent = WIN_REASONS[s.winReason] || '';
 }
 
 function renderControls(s) {
@@ -377,32 +437,39 @@ function renderControls(s) {
   const enable = {
     1: st === 0,
     2: st === 0 || st === 1,
-    3: st >= 2 && st <= 4 && !s?.paused,
+    3: st >= 1 && st <= 4 && !s?.paused,
     4: !!s?.paused,
     5: st >= 1 && st <= 4,
     6: true,
   };
   $$('[data-game]').forEach((b) => { b.disabled = !connected || !enable[b.dataset.game]; });
   const combat = st === 4 && !s?.paused;
+  $('#btnBothYellow').disabled = !connected;
   robots.forEach((ui, i) => {
-    const alive = s?.robots[i]?.alive;
-    ui.el.classList.toggle('disabled', !connected || !combat || !alive);
-    $('.act-shoot', ui.el).disabled = !connected || !combat || !alive;
+    const r = s?.robots[i];
+    ui.el.classList.toggle('disabled', !connected || !combat || !r?.alive || r?.disconnected);
+    $('.act-shoot', ui.el).disabled = !connected || !combat || !r?.shooterOn;
+    ui.disconnect.textContent = r?.disconnected ? 'Reconnect' : 'Disconnect';
     $$('button', ui.el).filter((b) => !b.classList.contains('act-shoot')).forEach((b) => { b.disabled = !connected; });
+    $$('.hit-kind input', ui.el).forEach((x) => { x.disabled = !connected; });
     $('.act-forfeit', ui.el).disabled = !connected || !(st >= 1 && st <= 4);
     ui.powerIn.disabled = !connected;
   });
   const form = $('#configForm');
   $$('input, select, button', form).forEach((x) => { x.disabled = !connected || st !== 0; });
   if (s && !configDirty && document.activeElement?.form !== form) {
+    const live = {
+      gameType: s.gameType, combatTime: s.combatTime, setupTime: s.setupTime, maxHp: s.robots[0].maxHp,
+      hitDmg: s.hitDmg, heatLimit: s.robots[0].heatLimit, cooling: s.cooling,
+      powerLimit: s.robots[0].powerLimit, speedLimit: s.speedLimit, allowance: null,
+    };
     form.gameType.value = String(s.gameType);
     form.link.value = String(s.link);
-    form.combatTime.value = s.combatTime;
-    form.maxHp.value = s.robots[0].maxHp;
-    form.heatLimit.value = s.robots[0].heatLimit;
-    form.cooling.value = s.cooling;
-    form.powerLimit.value = s.robots[0].powerLimit;
-    form.hitDmg.value = s.hitDmg;
+    for (const k of CONFIG_FIELDS) if (live[k] !== null) form[k].value = live[k];
+    if (st === 0) form.allowance.value = s.robots[0].allowance;
+    const match = Object.entries(PRESETS).find(([, p]) => CONFIG_FIELDS.every((k) => live[k] === null || p[k] === live[k])
+      && p.gameType === s.gameType);
+    presetSelect.value = match ? match[0] : 'custom';
   }
 }
 
@@ -440,11 +507,10 @@ function renderLinkView() {
     field(dl, '0x0201 outputs', `gimbal ${rs.gimbalOn ? 'on' : 'off'}, chassis ${rs.chassisOn ? 'on' : 'off'}, shooter ${rs.shooterOn ? 'on' : 'off'}`);
   }
   if (ph) {
-    field(dl, '0x0202 chassis_power', `${ph.power.toFixed(1)} W (${ph.current} mA)`);
     field(dl, '0x0202 buffer_energy', `${ph.buffer} J`);
-    field(dl, '0x0202 17mm barrel heat', `${ph.heat17_1}`);
+    field(dl, '0x0202 17mm barrel heat', `${ph.heat17}`);
   }
-  if (hp) field(dl, '0x0003 red_3 / blue_3', `${hp.red3} / ${hp.blue3}`);
+  if (hp) field(dl, '0x0003 ally_3 HP', `${hp.ally3}`);
   if (hurt) field(dl, '0x0206 last hurt', `armor ${hurt.armor}, ${HURT_REASONS[hurt.reason] || hurt.reason}`);
   if (shot) field(dl, '0x0207 last shot', `${shot.speed.toFixed(1)} m/s`);
   if (warn) field(dl, '0x0104 last warning', `level ${warn.level}, robot ${warn.offender}, count ${warn.count}`);

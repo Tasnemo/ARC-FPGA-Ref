@@ -132,6 +132,16 @@ main { padding: 16px 20px 32px; display: grid; gap: 16px; max-width: 1500px; mar
 .gauge .bar { grid-column: 1 / -1; }
 .g-label { color: var(--muted); font-size: 12px; }
 .g-value { font: 12px var(--mono); text-align: right; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px; }
+.chip { font: 600 11px var(--sans); padding: 2px 8px; border-radius: 999px; background: var(--panel-2); color: var(--muted); border: 1px solid var(--line); }
+.chip.on { color: var(--ok); }
+.chip.bad { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, transparent); background: #2a1216; }
+.chip.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+.hit-kind { border: 0; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 2px 14px; }
+.hit-kind legend { font-size: 12px; color: var(--muted); padding: 0; margin-bottom: 4px; }
+.hit-kind label { gap: 5px; color: var(--text); }
+.inline input[type="radio"], input[type="radio"] { width: auto; padding: 0; margin: 0; accent-color: var(--c, var(--blue)); }
+.result-why { color: var(--muted); font-size: 12px; margin-top: 2px; }
 .cards .card { display: inline-block; width: 10px; height: 14px; border-radius: 2px; margin-left: 3px; vertical-align: middle; }
 .cards .card.yellow { background: var(--warn); }
 .cards .card.red { background: var(--danger); }
@@ -160,7 +170,8 @@ main { padding: 16px 20px 32px; display: grid; gap: 16px; max-width: 1500px; mar
 .config summary { cursor: pointer; font-weight: 600; }
 .config form { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; margin-top: 10px; }
 .config label { display: grid; gap: 3px; font-size: 12px; color: var(--muted); }
-.config button { grid-column: 1 / -1; }
+.config button, .config .wide { grid-column: 1 / -1; }
+.btn-grid .wide { grid-column: 1 / -1; }
 input, select {
   font: 13px var(--sans); color: var(--text); background: #0b0e13;
   border: 1px solid var(--line); border-radius: 6px; padding: 5px 7px; min-width: 0;
@@ -203,7 +214,9 @@ input[type="range"] { padding: 0; accent-color: var(--c, var(--blue)); }
 .event-log .hpv { color: var(--muted); }
 .event-log .k-yellow { color: var(--warn); }
 .event-log .k-red, .event-log .k-forfeit, .event-log .k-kill { color: var(--danger); }
-.event-log .k-revive { color: var(--ok); }
+.event-log .k-revive, .event-log .k-reconnect, .event-log .k-unlocked { color: var(--ok); }
+.event-log .k-locked, .event-log .k-chassis-cut, .event-log .k-yellow-both, .event-log .k-disconnect { color: var(--warn); }
+.event-log .k-offline-hp, .event-log .k-defeated { color: var(--danger); }
 
 .fields { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 10px 0; font-size: 12px; }
 .fields dt { color: var(--muted); }
@@ -277,6 +290,7 @@ input[type="range"] { padding: 0; accent-color: var(--c, var(--blue)); }
         <div id="clockTime" class="time">--:--</div>
         <div id="clockSub" class="clock-sub">&nbsp;</div>
         <div id="resultBanner" class="result" hidden></div>
+        <div id="resultWhy" class="result-why" hidden></div>
       </div>
       <div class="team" data-team="1"></div>
     </section>
@@ -285,22 +299,25 @@ input[type="range"] { padding: 0; accent-color: var(--c, var(--blue)); }
       <div class="panel match">
         <h2>Match control</h2>
         <div class="btn-grid">
-          <button class="btn" data-game="1">Preparation</button>
-          <button class="btn primary" data-game="2">Start match</button>
-          <button class="btn" data-game="3">Pause</button>
+          <button class="btn primary" data-game="1" title="Starts the setup period countdown, then init, countdown and battle">Start setup period</button>
+          <button class="btn" data-game="2" title="Skip the setup period and go straight to the 15 s referee init">Skip to init</button>
+          <button class="btn" data-game="3" title="Official or team timeout">Pause / timeout</button>
           <button class="btn" data-game="4">Resume</button>
-          <button class="btn danger" data-game="5">End match</button>
+          <button class="btn danger" data-game="5">End round</button>
           <button class="btn" data-game="6">Reset</button>
+          <button id="btnBothYellow" class="btn warn wide" title="Both teams yellow: every robot loses 5 % max HP">Both teams yellow card</button>
         </div>
 
         <details id="configPanel" class="config">
           <summary>Rules config <span class="hint">(only before a match)</span></summary>
           <form id="configForm">
+            <label class="wide">Preset
+              <select name="preset" id="presetSelect"></select>
+            </label>
             <label>Game type
               <select name="gameType">
-                <option value="5">RMUL 1v1</option>
-                <option value="4">RMUL 3v3</option>
-                <option value="1">RMUC</option>
+                <option value="5">1v1 (RMUL 1v1)</option>
+                <option value="4">3v3 (RMUL 3v3)</option>
               </select>
             </label>
             <label>Link robot
@@ -309,12 +326,15 @@ input[type="range"] { padding: 0; accent-color: var(--c, var(--blue)); }
                 <option value="1">Blue 103</option>
               </select>
             </label>
-            <label>Combat time (s) <input name="combatTime" type="number" min="5" max="900" value="180"></label>
+            <label>Setup period (s) <input name="setupTime" type="number" min="0" max="900" value="120"></label>
+            <label>Battle (s) <input name="combatTime" type="number" min="5" max="900" value="120"></label>
             <label>Max HP <input name="maxHp" type="number" min="1" max="5000" value="200"></label>
-            <label>Heat limit <input name="heatLimit" type="number" min="1" max="2000" value="100"></label>
-            <label>Cooling / s <input name="cooling" type="number" min="0" max="2000" value="20"></label>
-            <label>Chassis power limit (W) <input name="powerLimit" type="number" min="1" max="500" value="60"></label>
-            <label>Damage per hit <input name="hitDmg" type="number" min="0" max="1000" value="10"></label>
+            <label>17 mm damage <input name="hitDmg" type="number" min="0" max="1000" value="20"></label>
+            <label>Barrel heat limit <input name="heatLimit" type="number" min="1" max="2000" value="80"></label>
+            <label>Cooling / s <input name="cooling" type="number" min="0" max="2000" value="12"></label>
+            <label>Chassis power limit (W) <input name="powerLimit" type="number" min="1" max="500" value="120"></label>
+            <label>Speed limit (m/s) <input name="speedLimit" type="number" min="1" max="60" value="25"></label>
+            <label>Projectiles <input name="allowance" type="number" min="0" max="5000" value="200"></label>
             <button class="btn primary" type="submit">Apply to board</button>
           </form>
         </details>
@@ -381,9 +401,18 @@ input[type="range"] { padding: 0; accent-color: var(--c, var(--blue)); }
         <span class="g-value power-value"></span>
       </div>
       <div class="gauge">
+        <span class="g-label">Projectiles left</span>
+        <span class="g-value ammo-value"></span>
+      </div>
+      <div class="gauge">
         <span class="g-label">Cards</span>
         <span class="g-value cards"></span>
       </div>
+    </div>
+    <div class="chips">
+      <span class="chip chip-shooter"></span>
+      <span class="chip chip-chassis"></span>
+      <span class="chip chip-gimbal"></span>
     </div>
   </template>
 
@@ -402,8 +431,14 @@ input[type="range"] { padding: 0; accent-color: var(--c, var(--blue)); }
       <div class="robot-actions">
         <div class="row">
           <button class="btn primary act-shoot">Fire 17 mm</button>
-          <label class="inline">at <input class="shoot-speed" type="number" step="0.1" min="0" max="40" value="25.0"> m/s</label>
+          <label class="inline">at <input class="shoot-speed" type="number" step="0.1" min="0" max="60" value="24.0"> m/s</label>
         </div>
+        <fieldset class="row hit-kind">
+          <legend>Armor click registers</legend>
+          <label class="inline"><input type="radio" value="0" checked> 17 mm</label>
+          <label class="inline"><input type="radio" value="2"> 42 mm</label>
+          <label class="inline"><input type="radio" value="1"> collision</label>
+        </fieldset>
         <label class="slider">Chassis draw <output class="power-out">0 W</output>
           <input class="power-in" type="range" min="0" max="200" value="0">
         </label>
@@ -415,6 +450,7 @@ input[type="range"] { padding: 0; accent-color: var(--c, var(--blue)); }
         <div class="row">
           <button class="btn act-kill">Kill</button>
           <button class="btn act-revive">Revive</button>
+          <button class="btn act-disconnect" title="Abnormal disconnection: outputs off, -5 % max HP per second">Disconnect</button>
         </div>
       </div>
     </div>
@@ -425,6 +461,7 @@ input[type="range"] { padding: 0; accent-color: var(--c, var(--blue)); }
 'use strict';
 // ---- protocol.js
 // ARC referee link protocol (docs/protocol.md). Mirrors tools/arcref.py.
+// Real frames follow the RoboMaster 2026 University Series protocol (ARCC 2026).
 //
 // Frame: SOF 0xA5 | data_length u16 | seq u8 | CRC8 | cmd_id u16 | data | CRC16
 // All multi-byte fields are little-endian.
@@ -456,27 +493,49 @@ const CMD = {
 const CMD_NAMES = {
   0x0001: 'game_status',
   0x0002: 'game_result',
-  0x0003: 'game_robot_HP',
+  0x0003: 'ally_robot_HP',
   0x0104: 'referee_warning',
   0x0201: 'robot_status',
-  0x0202: 'power_heat_data',
+  0x0202: 'buffer_heat_data',
   0x0206: 'hurt_data',
   0x0207: 'shoot_data',
   0xf101: 'server_state',
   0xf102: 'server_event',
 };
 
-const STAGES = ['Not started', 'Preparation', 'Self-check', 'Countdown', 'Combat', 'Settlement'];
+const STAGES = ['Not started', 'Setup period', 'Referee init', 'Countdown', 'Battle', 'Settlement'];
 const GAME_TYPES = { 1: 'RMUC', 2: 'RMUT', 3: 'RMUA', 4: 'RMUL 3v3', 5: 'RMUL 1v1' };
 const EVENT_KINDS = {
-  1: 'hit', 2: 'shot', 3: 'overheat', 4: 'overpower', 5: 'yellow',
-  6: 'red', 7: 'forfeit', 8: 'kill', 9: 'revive',
+  1: 'hit', 2: 'shot', 3: 'locked', 4: 'chassis-cut', 5: 'yellow', 6: 'red', 7: 'forfeit',
+  8: 'kill', 9: 'revive', 10: 'disconnect', 11: 'reconnect', 12: 'offline-hp', 13: 'unlocked',
+  14: 'yellow-both',
 };
-const HURT_REASONS = {
-  0: 'armor hit', 1: 'module offline', 2: 'over speed', 3: 'barrel heat', 4: 'chassis power', 5: 'collision',
+const LOCKS = {
+  1: 'barrel heat over limit', 2: 'barrel heat over limit + 100 (rest of round)',
+  3: 'over speed (15 s)', 4: 'over speed (20 s)', 5: 'over speed (rest of round)', 6: 'out of projectiles',
 };
-const GAME = { PREP: 1, START: 2, PAUSE: 3, RESUME: 4, END: 5, RESET: 6 };
-const PENALTY = { YELLOW: 2, RED: 3, FORFEIT: 4 };
+const WIN_REASONS = {
+  0: '', 1: 'opponent defeated', 2: 'more remaining HP', 3: 'opponent took first damage',
+  4: 'more shots fired', 5: 'fired first', 6: 'tie: lighter robot wins (referee decides)', 7: 'forfeit',
+};
+const HURT_REASONS = { 0: 'armor hit', 1: 'module offline', 5: 'collision' };
+const GAME = { SETUP: 1, START: 2, PAUSE: 3, RESUME: 4, END: 5, RESET: 6 };
+const PENALTY = { BOTH_YELLOW: 1, YELLOW: 2, RED: 3, FORFEIT: 4 };
+const LIFE = { KILL: 0, REVIVE: 1, DISCONNECT: 2, RECONNECT: 3 };
+const HIT_KIND = { MM17: 0, COLLISION: 1, MM42: 2 };
+
+// Robot stat presets from the ARCC 2026 Events Manual. The referee core
+// always plays the 1v1 winning rules; 3v3 presets only change the numbers.
+const PRESETS = {
+  '1v1': { label: '1v1 Infantry (ARCC 2026)', gameType: 5, combatTime: 120, setupTime: 120,
+    maxHp: 200, heatLimit: 80, cooling: 12, powerLimit: 120, hitDmg: 20, speedLimit: 25, allowance: 200 },
+  infHp: { label: '3v3 Infantry: HP + Cooldown priority', gameType: 4, combatTime: 300, setupTime: 180,
+    maxHp: 350, heatLimit: 88, cooling: 24, powerLimit: 75, hitDmg: 20, speedLimit: 25, allowance: 500 },
+  infPower: { label: '3v3 Infantry: Power + Burst priority', gameType: 4, combatTime: 300, setupTime: 180,
+    maxHp: 300, heatLimit: 230, cooling: 14, powerLimit: 90, hitDmg: 20, speedLimit: 25, allowance: 500 },
+  sentry: { label: '3v3 Sentry', gameType: 4, combatTime: 300, setupTime: 180,
+    maxHp: 400, heatLimit: 260, cooling: 30, powerLimit: 100, hitDmg: 20, speedLimit: 25, allowance: 750 },
+};
 const ROBOT_IDS = [3, 103];
 
 const CRC8_TABLE = new Uint8Array(256);
@@ -573,7 +632,7 @@ class FrameDecoder {
 
 // ----------------------------------------------------------------- payloads
 function robotBlock(v, o) {
-  const flags = v.getUint8(o + 15);
+  const f = v.getUint8(o + 19);
   return {
     hp: v.getUint16(o, true),
     maxHp: v.getUint16(o + 2, true),
@@ -582,9 +641,19 @@ function robotBlock(v, o) {
     buffer: v.getUint16(o + 8, true),
     power: v.getUint16(o + 10, true),
     powerLimit: v.getUint16(o + 12, true),
-    yellow: v.getUint8(o + 14),
-    alive: !!(flags & 1),
-    redCard: !!(flags & 2),
+    allowance: v.getUint16(o + 14, true),
+    shots: v.getUint16(o + 16, true),
+    yellow: v.getUint8(o + 18),
+    alive: !!(f & 1),
+    redCard: !!(f & 2),
+    shooterOn: !!(f & 4),
+    chassisOn: !!(f & 8),
+    gimbalOn: !!(f & 16),
+    disconnected: !!(f & 32),
+    heatLocked: !!(f & 64),
+    speedLocked: !!(f & 128),
+    speedLockS: v.getUint8(o + 20),
+    chassisCutDs: v.getUint8(o + 21),
   };
 }
 
@@ -603,8 +672,8 @@ function decodePayload(cmd, data) {
         return { winner: data[0] };
       case CMD.ROBOT_HP: {
         const hp = [];
-        for (let i = 0; i < 16; i++) hp.push(v.getUint16(i * 2, true));
-        return { red3: hp[2], blue3: hp[10], all: hp };
+        for (let i = 0; i < 8; i++) hp.push(v.getUint16(i * 2, true));
+        return { ally3: hp[2], all: hp };
       }
       case CMD.REFEREE_WARNING:
         return { level: data[0], offender: data[1], count: data[2] };
@@ -622,33 +691,31 @@ function decodePayload(cmd, data) {
           shooterOn: !!(data[12] & 4),
         };
       case CMD.POWER_HEAT:
-        return {
-          voltage: v.getUint16(0, true),
-          current: v.getUint16(2, true),
-          power: v.getFloat32(4, true),
-          buffer: v.getUint16(8, true),
-          heat17_1: v.getUint16(10, true),
-          heat17_2: v.getUint16(12, true),
-          heat42: v.getUint16(14, true),
-        };
+        return { buffer: v.getUint16(8, true), heat17: v.getUint16(10, true), heat42: v.getUint16(12, true) };
       case CMD.HURT:
         return { armor: data[0] & 0xf, reason: data[0] >> 4 };
       case CMD.SHOOT:
         return { bulletType: data[0], shooter: data[1], freq: data[2], speed: v.getFloat32(3, true) };
       case CMD.SERVER_STATE:
+        if (data.length < 66) return null;
         return {
           stage: data[0],
           paused: !!(data[1] & 1),
+          firstDmg: (data[1] >> 1) & 3,
+          firstShot: (data[1] >> 3) & 3,
           remain: v.getUint16(2, true),
           winner: data[4],
-          link: data[5],
-          gameType: data[6],
-          robots: [robotBlock(v, 7), robotBlock(v, 23)],
-          rxOk: v.getUint16(39, true),
-          rxErr: v.getUint16(41, true),
-          combatTime: v.getUint16(43, true),
-          cooling: v.getUint16(45, true),
-          hitDmg: v.getUint16(47, true),
+          winReason: data[5],
+          link: data[6],
+          gameType: data[7],
+          robots: [robotBlock(v, 8), robotBlock(v, 30)],
+          rxOk: v.getUint16(52, true),
+          rxErr: v.getUint16(54, true),
+          combatTime: v.getUint16(56, true),
+          cooling: v.getUint16(58, true),
+          hitDmg: v.getUint16(60, true),
+          setupTime: v.getUint16(62, true),
+          speedLimit: v.getUint16(64, true),
         };
       case CMD.EVENT:
         return { robot: data[0], kind: data[1], detail: data[2], hp: v.getUint16(3, true) };
@@ -669,24 +736,22 @@ function bytes(n, fill) {
 
 const commands = {
   game: (action) => [CMD.C_GAME, Uint8Array.of(action)],
-  config: (c) => [CMD.C_CONFIG, bytes(14, (v) => {
+  config: (c) => [CMD.C_CONFIG, bytes(20, (v) => {
     v.setUint8(0, c.gameType);
     v.setUint8(1, c.link);
-    v.setUint16(2, c.combatTime, true);
-    v.setUint16(4, c.maxHp, true);
-    v.setUint16(6, c.heatLimit, true);
-    v.setUint16(8, c.cooling, true);
-    v.setUint16(10, c.powerLimit, true);
-    v.setUint16(12, c.hitDmg, true);
+    [c.combatTime, c.maxHp, c.heatLimit, c.cooling, c.powerLimit, c.hitDmg,
+      c.setupTime, c.speedLimit, c.allowance].forEach((x, i) => v.setUint16(2 + 2 * i, x, true));
   })],
-  hit: (robot, armor) => [CMD.C_HIT, Uint8Array.of(robot, armor)],
-  shoot: (robot, freq, speed) => [CMD.C_SHOOT, bytes(6, (v) => {
+  hit: (robot, armor, kind = HIT_KIND.MM17) => [CMD.C_HIT, Uint8Array.of(robot, armor, kind)],
+  // speed goes twice: as f32 for 0x0207, and in 0.1 m/s for the fabric's limit check
+  shoot: (robot, freq, speed) => [CMD.C_SHOOT, bytes(8, (v) => {
     v.setUint8(0, robot);
     v.setUint8(1, freq);
     v.setFloat32(2, speed, true);
+    v.setUint16(6, Math.round(speed * 10), true);
   })],
   penalty: (robot, level) => [CMD.C_PENALTY, Uint8Array.of(robot, level)],
-  life: (robot, revive) => [CMD.C_LIFE, Uint8Array.of(robot, revive ? 1 : 0)],
+  life: (robot, action) => [CMD.C_LIFE, Uint8Array.of(robot, action)],
   power: (robot, watts) => [CMD.C_POWER, bytes(3, (v) => {
     v.setUint8(0, robot);
     v.setUint16(1, watts, true);
@@ -775,27 +840,37 @@ class SerialLink {
 // Demo-mode transport: a JavaScript copy of the fabric (arc_rx_parser +
 // arc_ref_core + arc_frame_gen) that speaks the same byte stream as the
 // Zybo, so the console can be developed and tested without hardware.
-// Keep the rules in step with hw/rtl/arc_ref_core.v.
+// Keep the rules in step with hw/rtl/arc_ref_core.v; web/test checks that a
+// replay of the RTL testbench ends the same way.
 
 
 const ST = { IDLE: 0, PREP: 1, CHECK: 2, COUNT: 3, COMBAT: 4, RESULT: 5 };
-const EV = { HIT: 1, SHOT: 2, OVERHEAT: 3, OVERPOWER: 4, YELLOW: 5, RED: 6, FORFEIT: 7, KILL: 8, REVIVE: 9 };
+const EV = {
+  HIT: 1, SHOT: 2, LOCK: 3, CHASSIS: 4, YELLOW: 5, RED: 6, FORFEIT: 7, KILL: 8,
+  REVIVE: 9, DISCONNECT: 10, RECONNECT: 11, OFFLINE_HP: 12, UNLOCK: 13, YELLOW_BOTH: 14,
+};
+const LK = { HEAT: 1, HEAT_ROUND: 2, SPEED15: 3, SPEED20: 4, SPEED_ROUND: 5, AMMO: 6 };
+const WR = { NONE: 0, DEFEAT: 1, HP: 2, FIRST_DMG: 3, SHOTS: 4, FIRST_SHOT: 5, TIE: 6, FORFEIT: 7 };
 const BUFFER_FULL_X10 = 600;
+const LOCK_ROUND = 0xffff;
+const YELLOW_WINDOW = 300;
+const CHASSIS_CUT = 50;
 const div10 = (x) => Math.floor(x / 10);
-const u16 = (x) => Math.max(0, Math.min(0xffff, x));
+const pctOf = (x, p) => Math.floor((x * p + 50) / 100);
+const robotId = (r) => (r ? 103 : 3);
 
 class SimLink {
   constructor() {
     this.onData = () => {};
     this.onClose = () => {};
     this.label = 'Demo (emulated board)';
-    this.rx = new FrameDecoder(16);
+    this.rx = new FrameDecoder(24);
   }
 
   async open() {
     this.reset();
     this.timer = setInterval(() => this.tick20(), 20);
-    this.emitText('\r\nARC ref bridge ready (demo)\r\n');
+    this.onData(new TextEncoder().encode('\r\nARC ref bridge ready (demo)\r\n'));
   }
 
   async close() {
@@ -804,7 +879,6 @@ class SimLink {
   }
 
   async write(bytes) {
-    // Byte-level parse, same as the fabric parser (max 16-byte payload).
     const before = this.rx.bad;
     for (const f of this.rx.push(bytes)) {
       this.rxOk++;
@@ -814,31 +888,34 @@ class SimLink {
   }
 
   reset() {
-    this.cfg = { combatTime: 180, maxHp: 200, heatLimit: 100, cooling: 20, powerLimit: 60, hitDmg: 10 };
-    this.stage = ST.IDLE;
-    this.paused = false;
-    this.remain = 0;
+    this.cfg = {
+      combatTime: 120, maxHp: 200, heatLimit: 80, cooling: 12, powerLimit: 120,
+      hitDmg: 20, setupTime: 120, speedLimit: 25, allowance: 200,
+    };
+    Object.assign(this, {
+      stage: ST.IDLE, paused: false, remain: 0, gameType: 5, link: 0, unix: 0,
+      sub: 0, t5: 0, t10: 0, c50: 0, c5: 0, c17: 0, seq: 0, rxOk: 0, rxErr: 0,
+      warnL: [0, 0, 0],
+    });
+    this.robots = [0, 1].map(() => ({ power: 0 }));
+    this.resetRobots();
+  }
+
+  resetRobots() {
+    for (const rb of this.robots) {
+      Object.assign(rb, {
+        hp: this.cfg.maxHp, heat10: 0, buf10: BUFFER_FULL_X10, ammo: this.cfg.allowance, shots: 0,
+        yellow: 0, yelPct: 0, yelWin: 0, red: false, heatLk: 0, spdLk: 0, chOff: 0, disc: false, discT: 0,
+      });
+    }
+    this.bothYellow = 0;
+    this.firstDmg = 0;
+    this.firstShot = 0;
     this.winner = 0;
-    this.gameType = 5;
-    this.link = 0;
-    this.unix = 0;
-    this.sub = 0;
-    this.t5 = 0;
-    this.t10 = 0;
-    this.c50 = 0;
-    this.c5 = 0;
-    this.c17 = 0;
-    this.seq = 0;
-    this.rxOk = 0;
-    this.rxErr = 0;
-    this.robots = [0, 1].map(() => ({ hp: 200, heat10: 0, buf10: BUFFER_FULL_X10, power: 0, yellow: 0, red: false }));
+    this.winReason = WR.NONE;
   }
 
   // ------------------------------------------------------------- outputs
-  emitText(s) {
-    this.onData(new TextEncoder().encode(s));
-  }
-
   send(cmd, payload) {
     this.onData(encode(cmd, payload, this.seq));
     this.seq = (this.seq + 1) & 0xff;
@@ -863,72 +940,76 @@ class SimLink {
     this.send(CMD.GAME_STATUS, p);
   }
 
-  sendResult() {
-    this.send(CMD.GAME_RESULT, Uint8Array.of(this.winner));
+  sendWarn() {
+    this.send(CMD.REFEREE_WARNING, Uint8Array.from(this.warnL));
   }
 
   sendHp() {
-    const p = new Uint8Array(32);
-    const v = new DataView(p.buffer);
-    v.setUint16(4, this.robots[0].hp, true);
-    v.setUint16(20, this.robots[1].hp, true);
+    const p = new Uint8Array(16);
+    new DataView(p.buffer).setUint16(4, this.robots[this.link].hp, true);
     this.send(CMD.ROBOT_HP, p);
   }
 
+  flags(r) {
+    const rb = this.robots[r];
+    const alive = rb.hp > 0;
+    const gimbal = alive && !rb.disc;
+    const chassis = gimbal && rb.chOff === 0;
+    const shooter = gimbal && rb.heatLk === 0 && rb.spdLk === 0 && rb.ammo > 0;
+    return (alive ? 1 : 0) | (rb.red ? 2 : 0) | (shooter ? 4 : 0) | (chassis ? 8 : 0) | (gimbal ? 16 : 0)
+      | (rb.disc ? 32 : 0) | (rb.heatLk ? 64 : 0) | (rb.spdLk ? 128 : 0);
+  }
+
+  shooterOn(r) {
+    return !!(this.flags(r) & 4);
+  }
+
   sendRobotStatus() {
-    const r = this.robots[this.link];
+    const r = this.link;
+    const f = this.flags(r);
     const p = new Uint8Array(13);
     const v = new DataView(p.buffer);
-    const alive = r.hp > 0 ? 1 : 0;
-    v.setUint8(0, this.link ? 103 : 3);
+    v.setUint8(0, robotId(r));
     v.setUint8(1, 1);
-    v.setUint16(2, r.hp, true);
+    v.setUint16(2, this.robots[r].hp, true);
     v.setUint16(4, this.cfg.maxHp, true);
     v.setUint16(6, this.cfg.cooling, true);
     v.setUint16(8, this.cfg.heatLimit, true);
     v.setUint16(10, this.cfg.powerLimit, true);
-    v.setUint8(12, 1 | (alive << 1) | (alive << 2));
+    v.setUint8(12, ((f >> 4) & 1) | (((f >> 3) & 1) << 1) | (((f >> 2) & 1) << 2));
     this.send(CMD.ROBOT_STATUS, p);
   }
 
   sendPowerHeat() {
-    const r = this.robots[this.link];
-    const p = new Uint8Array(16);
+    const rb = this.robots[this.link];
+    const p = new Uint8Array(14);
     const v = new DataView(p.buffer);
-    v.setUint16(0, 24000, true);
-    v.setUint16(2, Math.floor((r.power * 42667) / 1024) & 0xffff, true);
-    v.setFloat32(4, r.power, true);
-    v.setUint16(8, div10(r.buf10), true);
-    v.setUint16(10, div10(r.heat10), true);
+    v.setUint16(8, div10(rb.buf10), true);
+    v.setUint16(10, div10(rb.heat10), true);
     this.send(CMD.POWER_HEAT, p);
   }
 
   sendServer() {
-    const p = new Uint8Array(49);
+    const p = new Uint8Array(66);
     const v = new DataView(p.buffer);
     v.setUint8(0, this.stage);
-    v.setUint8(1, this.paused ? 1 : 0);
+    v.setUint8(1, (this.paused ? 1 : 0) | (this.firstDmg << 1) | (this.firstShot << 3));
     v.setUint16(2, this.remain, true);
     v.setUint8(4, this.winner);
-    v.setUint8(5, this.link);
-    v.setUint8(6, this.gameType);
-    this.robots.forEach((r, i) => {
-      const o = 7 + 16 * i;
-      v.setUint16(o, r.hp, true);
-      v.setUint16(o + 2, this.cfg.maxHp, true);
-      v.setUint16(o + 4, div10(r.heat10), true);
-      v.setUint16(o + 6, this.cfg.heatLimit, true);
-      v.setUint16(o + 8, div10(r.buf10), true);
-      v.setUint16(o + 10, r.power, true);
-      v.setUint16(o + 12, this.cfg.powerLimit, true);
-      v.setUint8(o + 14, r.yellow);
-      v.setUint8(o + 15, (r.hp > 0 ? 1 : 0) | (r.red ? 2 : 0));
+    v.setUint8(5, this.winReason);
+    v.setUint8(6, this.link);
+    v.setUint8(7, this.gameType);
+    this.robots.forEach((rb, i) => {
+      const o = 8 + 22 * i;
+      [rb.hp, this.cfg.maxHp, div10(rb.heat10), this.cfg.heatLimit, div10(rb.buf10), rb.power,
+        this.cfg.powerLimit, rb.ammo, rb.shots].forEach((x, k) => v.setUint16(o + 2 * k, x, true));
+      v.setUint8(o + 18, rb.yellow);
+      v.setUint8(o + 19, this.flags(i));
+      v.setUint8(o + 20, rb.spdLk === LOCK_ROUND ? 255 : Math.min(254, div10(rb.spdLk + 9)));
+      v.setUint8(o + 21, rb.chOff);
     });
-    v.setUint16(39, this.rxOk, true);
-    v.setUint16(41, this.rxErr, true);
-    v.setUint16(43, this.cfg.combatTime, true);
-    v.setUint16(45, this.cfg.cooling, true);
-    v.setUint16(47, this.cfg.hitDmg, true);
+    [this.rxOk, this.rxErr, this.cfg.combatTime, this.cfg.cooling, this.cfg.hitDmg,
+      this.cfg.setupTime, this.cfg.speedLimit].forEach((x, k) => v.setUint16(52 + 2 * k, x & 0xffff, true));
     this.send(CMD.SERVER_STATE, p);
   }
 
@@ -937,43 +1018,68 @@ class SimLink {
     return this.stage === ST.COMBAT && !this.paused;
   }
 
-  damage(r, dmg, kind, detail, reason, armor) {
-    const rb = this.robots[r];
-    rb.hp = rb.hp > dmg ? rb.hp - dmg : 0;
-    this.event(r, kind, detail, rb.hp);
-    if (r === this.link) this.send(CMD.HURT, Uint8Array.of((reason << 4) | (armor & 0xf)));
-  }
-
-  warn(r, level, count) {
-    if (r === this.link) this.send(CMD.REFEREE_WARNING, Uint8Array.of(level, r ? 103 : 3, count & 0xff));
-  }
-
-  resetRobots() {
-    for (const rb of this.robots) {
-      rb.hp = this.cfg.maxHp;
-      rb.heat10 = 0;
-      rb.buf10 = BUFFER_FULL_X10;
-      rb.yellow = 0;
-      rb.red = false;
-    }
-  }
-
-  finish(w) {
-    this.stage = ST.RESULT;
-    this.remain = 0;
-    this.paused = false;
-    this.winner = w;
-    this.sendResult();
+  finish(w, why) {
+    Object.assign(this, { stage: ST.RESULT, remain: 0, paused: false, winner: w, winReason: why });
+    this.send(CMD.GAME_RESULT, Uint8Array.of(w));
     this.sendStatus();
   }
 
-  hpWinner() {
-    const [a, b] = this.robots;
-    return a.hp > b.hp ? 1 : b.hp > a.hp ? 2 : 0;
+  setHp(r, nh) {
+    const wasCombat = this.stage === ST.COMBAT;
+    if (this.inCombat && this.firstDmg === 0) this.firstDmg = r ? 2 : 1;
+    this.robots[r].hp = nh;
+    if (wasCombat && nh === 0) this.finish(r ? 1 : 2, WR.DEFEAT);
   }
 
-  hit(r, detail) {
-    if (this.inCombat && this.robots[r].hp > 0) this.damage(r, this.cfg.hitDmg, EV.HIT, detail, 0, detail & 0xf);
+  warn(r, level, id, count) {
+    if (r === this.link) {
+      this.warnL = [level, id, count & 0xff];
+      this.sendWarn();
+    }
+  }
+
+  judge() {
+    const [a, b] = this.robots;
+    if (a.hp !== b.hp) return [a.hp > b.hp ? 1 : 2, WR.HP];
+    if (a.hp !== this.cfg.maxHp && this.firstDmg) return [this.firstDmg === 1 ? 2 : 1, WR.FIRST_DMG];
+    if (a.shots !== b.shots) return [a.shots > b.shots ? 1 : 2, WR.SHOTS];
+    if (this.firstShot) return [this.firstShot, WR.FIRST_SHOT];
+    return [0, WR.TIE];
+  }
+
+  hit(r, armor, kind) {
+    const rb = this.robots[r];
+    if (!(this.inCombat && rb.hp > 0 && !rb.disc)) return;
+    const dmg = kind === 1 ? 2 : kind === 2 ? 200 : this.cfg.hitDmg;
+    const nh = rb.hp > dmg ? rb.hp - dmg : 0;
+    const detail = (kind === 1 ? 0x40 : 0) | (kind === 2 ? 0x20 : 0) | (armor & 0xf);
+    if (r === this.link) this.send(CMD.HURT, Uint8Array.of(((kind === 1 ? 5 : 0) << 4) | (armor & 0xf)));
+    this.event(r, EV.HIT, detail, nh);
+    this.setHp(r, nh);
+  }
+
+  penaltyHp(h, ded) {
+    return h === 0 ? 0 : h <= ded ? 1 : h - ded;
+  }
+
+  yellowCard(r) {
+    const rb = this.robots[r];
+    const cnt = (rb.yellow + 1) & 0xff;
+    const pct = Math.min(200, rb.yelWin ? rb.yelPct * 2 : 15);
+    rb.yellow = cnt;
+    rb.yelPct = pct;
+    rb.yelWin = YELLOW_WINDOW;
+    this.warn(r, 2, robotId(r), cnt);
+    if (cnt >= 3) {
+      rb.red = true;
+      this.event(r, EV.YELLOW, cnt, 0);
+      this.event(r, EV.RED, 1, 0);
+      this.setHp(r, 0);
+    } else {
+      const nh = this.penaltyHp(rb.hp, pctOf(this.cfg.maxHp, pct));
+      this.event(r, EV.YELLOW, cnt, nh);
+      if (nh !== rb.hp) this.setHp(r, nh);
+    }
   }
 
   runCmd(cmd, d) {
@@ -985,57 +1091,67 @@ class SimLink {
       case CMD.C_GAME:
         switch (d[0]) {
           case 1:
-            if (this.stage === ST.IDLE) { this.stage = ST.PREP; this.sendStatus(); }
+            if (this.stage === ST.IDLE) {
+              Object.assign(this, { stage: ST.PREP, remain: this.cfg.setupTime, sub: 0, paused: false });
+              this.sendStatus();
+            }
             break;
           case 2:
             if (this.stage === ST.IDLE || this.stage === ST.PREP) {
-              this.stage = ST.CHECK; this.remain = 15; this.sub = 0;
-              this.paused = false; this.winner = 0;
+              Object.assign(this, { stage: ST.CHECK, remain: 15, sub: 0, paused: false });
               this.resetRobots();
               this.sendStatus();
             }
             break;
           case 3:
-            if (this.stage >= ST.CHECK && this.stage <= ST.COMBAT) { this.paused = true; this.sendStatus(); }
+            if (this.stage >= ST.PREP && this.stage <= ST.COMBAT && !this.paused) { this.paused = true; this.sendStatus(); }
             break;
           case 4:
             if (this.paused) { this.paused = false; this.sendStatus(); }
             break;
           case 5:
-            if (this.stage >= ST.PREP && this.stage <= ST.COMBAT) this.finish(this.hpWinner());
+            if (this.stage >= ST.PREP && this.stage <= ST.COMBAT) this.finish(...this.judge());
             break;
           case 6:
-            this.stage = ST.IDLE; this.remain = 0; this.paused = false; this.winner = 0;
+            Object.assign(this, { stage: ST.IDLE, remain: 0, paused: false, warnL: [0, 0, 0] });
             this.resetRobots();
             for (const x of this.robots) x.power = 0;
+            this.sendWarn();
             this.sendStatus();
             break;
           default:
         }
         break;
       case CMD.C_CONFIG:
-        if (this.stage === ST.IDLE && d.length >= 14) {
+        if (this.stage === ST.IDLE && d.length >= 20) {
           this.gameType = d[0] & 0xf;
           this.link = d[1] & 1;
-          this.cfg = {
-            combatTime: v.getUint16(2, true),
-            maxHp: v.getUint16(4, true),
-            heatLimit: v.getUint16(6, true),
-            cooling: v.getUint16(8, true),
-            powerLimit: v.getUint16(10, true),
-            hitDmg: v.getUint16(12, true),
-          };
-          for (const x of this.robots) x.hp = this.cfg.maxHp;
+          const k = ['combatTime', 'maxHp', 'heatLimit', 'cooling', 'powerLimit', 'hitDmg', 'setupTime', 'speedLimit', 'allowance'];
+          k.forEach((name, i) => { this.cfg[name] = v.getUint16(2 + 2 * i, true); });
+          for (const x of this.robots) { x.hp = this.cfg.maxHp; x.ammo = this.cfg.allowance; }
           this.sendStatus();
         }
         break;
       case CMD.C_HIT:
-        this.hit(r, a & 3);
+        this.hit(r, a & 0xf, d.length >= 3 ? d[2] & 3 : 0);
         break;
       case CMD.C_SHOOT:
-        if (this.inCombat && rb.hp > 0) {
-          rb.heat10 = u16(rb.heat10 + 100);
+        if (this.inCombat && this.shooterOn(r)) {
+          rb.heat10 = Math.min(0xffff, rb.heat10 + 100);
+          rb.ammo--;
+          rb.shots++;
+          if (!this.firstShot) this.firstShot = r ? 2 : 1;
           this.event(r, EV.SHOT, a, rb.hp);
+          const sp = d.length >= 8 ? v.getUint16(6, true) : 0;
+          const lim10 = this.cfg.speedLimit * 10;
+          if (sp > lim10) {
+            const over = sp - lim10;
+            const [lk, lkd] = over < 50 ? [150, LK.SPEED15] : over < 100 ? [200, LK.SPEED20] : [LOCK_ROUND, LK.SPEED_ROUND];
+            if (rb.spdLk !== LOCK_ROUND && lk > rb.spdLk) rb.spdLk = lk;
+            this.event(r, EV.LOCK, lkd, rb.hp);
+          } else if (rb.ammo === 0) {
+            this.event(r, EV.LOCK, LK.AMMO, rb.hp);
+          }
           if (r === this.link) {
             const p = new Uint8Array(7);
             p[0] = 1; p[1] = 1; p[2] = a;
@@ -1045,27 +1161,41 @@ class SimLink {
         }
         break;
       case CMD.C_PENALTY:
-        if (a === 2) {
-          rb.yellow = (rb.yellow + 1) & 0xff;
-          this.event(r, EV.YELLOW, rb.yellow, rb.hp);
-          this.warn(r, 2, rb.yellow);
+        if (a === 1) {
+          this.bothYellow = (this.bothYellow + 1) & 0xff;
+          this.robots.forEach((x, i) => {
+            x.hp = this.penaltyHp(x.hp, pctOf(this.cfg.maxHp, 5));
+            this.event(i, EV.YELLOW_BOTH, this.bothYellow, x.hp);
+          });
+          this.warn(this.link, 1, 0, this.bothYellow);
+        } else if (a === 2) {
+          this.yellowCard(r);
         } else if (a === 3) {
-          rb.red = true; rb.hp = 0;
+          rb.red = true;
           this.event(r, EV.RED, 0, 0);
-          this.warn(r, 3, 1);
+          this.warn(r, 3, robotId(r), 1);
+          this.setHp(r, 0);
         } else if (a === 4 && this.stage >= ST.PREP && this.stage <= ST.COMBAT) {
+          if (this.stage !== ST.COMBAT) { rb.hp = 0; this.robots[r ^ 1].hp = this.cfg.maxHp; }
           this.event(r, EV.FORFEIT, 0, rb.hp);
-          this.warn(r, 4, 1);
-          this.finish(r ? 1 : 2);
+          this.warn(r, 4, 0, 1);
+          this.finish(r ? 1 : 2, WR.FORFEIT);
         }
         break;
       case CMD.C_LIFE:
         if (a === 0) {
-          rb.hp = 0;
           this.event(r, EV.KILL, 0, 0);
-        } else {
-          rb.hp = this.cfg.maxHp; rb.heat10 = 0; rb.red = false;
+          this.setHp(r, 0);
+        } else if (a === 1) {
+          Object.assign(rb, { hp: this.cfg.maxHp, heat10: 0, red: false, heatLk: 0, spdLk: 0, disc: false });
           this.event(r, EV.REVIVE, 0, rb.hp);
+        } else if (a === 2 && !rb.disc) {
+          rb.disc = true;
+          rb.discT = 0;
+          this.event(r, EV.DISCONNECT, 0, rb.hp);
+        } else if (a === 3 && rb.disc) {
+          rb.disc = false;
+          this.event(r, EV.RECONNECT, 0, rb.hp);
         }
         break;
       case CMD.C_POWER:
@@ -1078,50 +1208,87 @@ class SimLink {
     }
   }
 
-  step100() {
-    if (!this.paused && this.stage >= ST.CHECK && this.stage <= ST.COMBAT) {
-      if (this.sub === 9) {
-        this.sub = 0;
-        if (this.remain > 1) this.remain--;
-        else if (this.stage === ST.CHECK) { this.stage = ST.COUNT; this.remain = 5; this.sendStatus(); }
-        else if (this.stage === ST.COUNT) { this.stage = ST.COMBAT; this.remain = this.cfg.combatTime; this.sendStatus(); }
-        else this.finish(this.hpWinner());
-      } else {
-        this.sub++;
-      }
-    }
-    for (let r = 0; r < 2; r++) {
-      this.heatStep(r);
-      this.powerStep(r);
+  stageStep() {
+    if (this.paused || this.stage < ST.PREP || this.stage > ST.COMBAT) return;
+    if (this.sub !== 9) { this.sub++; return; }
+    this.sub = 0;
+    if (this.remain > 1) { this.remain--; return; }
+    if (this.stage === ST.PREP) {
+      Object.assign(this, { stage: ST.CHECK, remain: 15 });
+      this.resetRobots();
+      this.sendStatus();
+    } else if (this.stage === ST.CHECK) {
+      Object.assign(this, { stage: ST.COUNT, remain: 5 });
+      this.sendStatus();
+    } else if (this.stage === ST.COUNT) {
+      Object.assign(this, { stage: ST.COMBAT, remain: this.cfg.combatTime });
+      this.sendStatus();
+    } else {
+      this.finish(...this.judge());
     }
   }
 
   heatStep(r) {
     if (this.paused) return;
     const rb = this.robots[r];
-    const lim10 = this.cfg.heatLimit * 10;
-    rb.heat10 = rb.heat10 > this.cfg.cooling ? rb.heat10 - this.cfg.cooling : 0;
-    if (this.inCombat && rb.hp > 0 && rb.heat10 > lim10) {
-      this.damage(r, ((rb.heat10 - lim10) >> 6) + 1, EV.OVERHEAT, 0, 3, 0);
+    const h = rb.heat10;
+    const alive = rb.hp > 0;
+    if (this.inCombat && alive && rb.heatLk !== 2 && h > (this.cfg.heatLimit + 100) * 10) {
+      rb.heatLk = 2;
+      this.event(r, EV.LOCK, LK.HEAT_ROUND, rb.hp);
+    } else if (this.inCombat && alive && rb.heatLk === 0 && h > this.cfg.heatLimit * 10) {
+      rb.heatLk = 1;
+      this.event(r, EV.LOCK, LK.HEAT, rb.hp);
+    } else if (rb.heatLk === 1 && h <= this.cfg.cooling) {
+      rb.heatLk = 0;
+      this.event(r, EV.UNLOCK, LK.HEAT, rb.hp);
     }
+    rb.heat10 = h > this.cfg.cooling ? h - this.cfg.cooling : 0;
   }
 
   powerStep(r) {
     const rb = this.robots[r];
     const lim = this.cfg.powerLimit;
-    if (this.inCombat && rb.hp > 0) {
-      if (rb.power > lim) {
-        const d = rb.power - lim;
+    if (this.inCombat && rb.hp > 0 && !rb.disc) {
+      const p = rb.chOff ? 0 : rb.power;
+      if (rb.chOff) rb.chOff--;
+      if (p > lim) {
+        const d = p - lim;
         if (rb.buf10 > d) rb.buf10 -= d;
         else {
           rb.buf10 = 0;
-          this.damage(r, (d >> 2) + 1, EV.OVERPOWER, 0, 4, 0);
+          rb.chOff = CHASSIS_CUT;
+          this.event(r, EV.CHASSIS, 0, rb.hp);
         }
       } else {
-        rb.buf10 = Math.min(BUFFER_FULL_X10, rb.buf10 + (lim - rb.power));
+        rb.buf10 = Math.min(BUFFER_FULL_X10, rb.buf10 + (lim - p));
       }
     } else if (!this.paused) {
       rb.buf10 = BUFFER_FULL_X10;
+      rb.chOff = 0;
+    }
+  }
+
+  timerStep(r) {
+    if (!this.inCombat) return;
+    const rb = this.robots[r];
+    if (rb.yelWin) rb.yelWin--;
+    if (rb.spdLk === 1) {
+      rb.spdLk = 0;
+      this.event(r, EV.UNLOCK, LK.SPEED15, rb.hp);
+    } else if (rb.spdLk !== 0 && rb.spdLk !== LOCK_ROUND) {
+      rb.spdLk--;
+    }
+    if (rb.disc && rb.hp > 0) {
+      if (rb.discT === 9) {
+        rb.discT = 0;
+        const ded = pctOf(this.cfg.maxHp, 5);
+        const nh = rb.hp > ded ? rb.hp - ded : 0;
+        this.event(r, EV.OFFLINE_HP, 0, nh);
+        this.setHp(r, nh);
+      } else {
+        rb.discT++;
+      }
     }
   }
 
@@ -1129,16 +1296,22 @@ class SimLink {
     if (this.t5 === 4) {
       this.t5 = 0;
       if (this.t10 === 9) { this.t10 = 0; this.unix = (this.unix + 1) >>> 0; } else this.t10++;
-      this.step100();
+      this.stageStep();
+      for (let r = 0; r < 2; r++) {
+        this.heatStep(r);
+        this.powerStep(r);
+        this.timerStep(r);
+      }
     } else {
       this.t5++;
     }
     // Same periodic schedule as arc_frame_gen.
     if (this.c50 === 0) this.sendStatus();
+    if (this.c50 === 25) this.sendWarn();
     if (this.c5 === 0) this.sendRobotStatus();
-    this.sendPowerHeat();
+    if (this.c5 === 1) this.sendPowerHeat();
     if (this.c17 === 0) this.sendHp();
-    if (this.c5 === 2) this.sendServer();
+    if (this.c5 === 3) this.sendServer();
     this.c50 = this.c50 === 49 ? 0 : this.c50 + 1;
     this.c5 = this.c5 === 4 ? 0 : this.c5 + 1;
     this.c17 = this.c17 === 16 ? 0 : this.c17 + 1;
@@ -1150,7 +1323,8 @@ const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
 const TEAM_NAMES = ['RED 3', 'BLUE 103'];
-const TEAM_CLASS = ['red', 'blue'];
+const CONFIG_FIELDS = ['combatTime', 'setupTime', 'maxHp', 'hitDmg', 'heatLimit', 'cooling',
+  'powerLimit', 'speedLimit', 'allowance'];
 
 const state = {
   link: null,
@@ -1175,7 +1349,7 @@ const state = {
 const teams = $$('.team').map((el) => {
   el.append($('#teamTemplate').content.cloneNode(true));
   const r = Number(el.dataset.team);
-  $('.team-name', el).textContent = `${TEAM_NAMES[r]} · STANDARD`;
+  $('.team-name', el).textContent = `${TEAM_NAMES[r]} · INFANTRY`;
   return {
     el,
     linkBadge: $('.link-badge', el),
@@ -1190,7 +1364,11 @@ const teams = $$('.team').map((el) => {
     bufferFill: $('.buffer-bar .fill', el),
     bufferValue: $('.buffer-value', el),
     powerValue: $('.power-value', el),
+    ammoValue: $('.ammo-value', el),
     cards: $('.cards', el),
+    chipShooter: $('.chip-shooter', el),
+    chipChassis: $('.chip-chassis', el),
+    chipGimbal: $('.chip-gimbal', el),
   };
 });
 
@@ -1204,17 +1382,20 @@ const robots = $$('.panel.robot').map((el) => {
     speed: $('.shoot-speed', el),
     powerIn: $('.power-in', el),
     powerOut: $('.power-out', el),
+    disconnect: $('.act-disconnect', el),
   };
+  $$('.hit-kind input', el).forEach((x) => { x.name = `hitKind${r}`; });
+  const hitKind = () => Number($('.hit-kind input:checked', el)?.value || 0);
   ui.plates.forEach((p) => {
     p.setAttribute('tabindex', '0');
     const fire = () => {
-      if (!el.classList.contains('disabled')) send(commands.hit(r, Number(p.dataset.armor)));
+      if (!el.classList.contains('disabled')) send(commands.hit(r, Number(p.dataset.armor), hitKind()));
     };
     p.addEventListener('click', fire);
     p.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fire(); } });
   });
   $('.act-shoot', el).addEventListener('click', () => {
-    const speed = Math.max(0, Math.min(40, parseFloat(ui.speed.value) || 0));
+    const speed = Math.max(0, Math.min(60, parseFloat(ui.speed.value) || 0));
     send(commands.shoot(r, 5, speed));
   });
   let powerTimer = null;
@@ -1230,31 +1411,50 @@ const robots = $$('.panel.robot').map((el) => {
   $('.act-forfeit', el).addEventListener('click', () => {
     if (confirm(`${TEAM_NAMES[r]} forfeits? The match ends.`)) send(commands.penalty(r, PENALTY.FORFEIT));
   });
-  $('.act-kill', el).addEventListener('click', () => send(commands.life(r, false)));
-  $('.act-revive', el).addEventListener('click', () => send(commands.life(r, true)));
+  $('.act-kill', el).addEventListener('click', () => send(commands.life(r, LIFE.KILL)));
+  $('.act-revive', el).addEventListener('click', () => send(commands.life(r, LIFE.REVIVE)));
+  ui.disconnect.addEventListener('click', () => {
+    const offline = state.server?.robots[r]?.disconnected;
+    send(commands.life(r, offline ? LIFE.RECONNECT : LIFE.DISCONNECT));
+  });
   return ui;
 });
 
 $$('[data-game]').forEach((b) => {
   b.addEventListener('click', () => {
     const a = Number(b.dataset.game);
-    if (a === GAME.END && !confirm('End the match now?')) return;
+    if (a === GAME.END && !confirm('End the round now? The winner is decided by the 1v1 criteria.')) return;
     send(commands.game(a));
   });
+});
+$('#btnBothYellow').addEventListener('click', () => send(commands.penalty(0, PENALTY.BOTH_YELLOW)));
+
+const presetSelect = $('#presetSelect');
+for (const [key, p] of Object.entries(PRESETS)) presetSelect.append(new Option(p.label, key));
+presetSelect.append(new Option('Custom', 'custom'));
+presetSelect.addEventListener('change', () => {
+  const p = PRESETS[presetSelect.value];
+  if (!p) return;
+  const form = $('#configForm');
+  form.gameType.value = String(p.gameType);
+  for (const k of CONFIG_FIELDS) form[k].value = p[k];
+  configDirty = true;
 });
 
 $('#configForm').addEventListener('submit', (e) => {
   e.preventDefault();
   const f = new FormData(e.target);
   const n = (k) => Math.max(0, Math.min(0xffff, Math.round(Number(f.get(k)) || 0)));
-  send(commands.config({
-    gameType: n('gameType'), link: n('link'), combatTime: n('combatTime'), maxHp: n('maxHp'),
-    heatLimit: n('heatLimit'), cooling: n('cooling'), powerLimit: n('powerLimit'), hitDmg: n('hitDmg'),
-  }));
+  const c = { gameType: n('gameType'), link: n('link') };
+  for (const k of CONFIG_FIELDS) c[k] = n(k);
+  send(commands.config(c));
   configDirty = false;
 });
 let configDirty = false;
-$('#configForm').addEventListener('input', () => { configDirty = true; });
+$('#configForm').addEventListener('input', (e) => {
+  configDirty = true;
+  if (e.target !== presetSelect) presetSelect.value = 'custom';
+});
 
 $('#btnClearLog').addEventListener('click', () => { $('#eventLog').replaceChildren(); });
 $('#btnPauseRaw').addEventListener('click', (e) => {
@@ -1360,7 +1560,7 @@ function matchClock() {
   const s = state.server;
   if (!s) return '';
   if (s.stage === 4) return fmtTime(s.remain);
-  return ['idle', 'prep', 'check', 'count', '', 'end'][s.stage] || '';
+  return ['idle', 'setup', 'init', 'count', '', 'end'][s.stage] || '';
 }
 
 function addLogLine(robot, cls, text, hpText = '') {
@@ -1389,42 +1589,54 @@ function addLogLine(robot, cls, text, hpText = '') {
   return li;
 }
 
+function eventText(e) {
+  switch (e.kind) {
+    case 1: {
+      const what = e.detail & 0x40 ? 'collision' : e.detail & 0x20 ? '42 mm hit' : '17 mm hit';
+      return `${what} on armor ${e.detail & 0xf}${e.detail & 0x80 ? ' (board button)' : ''}`;
+    }
+    case 3: return `launcher locked: ${LOCKS[e.detail] || e.detail}`;
+    case 4: return 'buffer energy empty: chassis cut for 5 s';
+    case 5: return `yellow card #${e.detail}`;
+    case 6: return e.detail === 1 ? 'red card (third yellow): ejected' : 'red card: ejected';
+    case 7: return 'forfeits the round';
+    case 8: return 'killed by referee';
+    case 9: return 'revived by referee';
+    case 10: return 'abnormal disconnection: outputs off';
+    case 11: return 'reconnected';
+    case 12: return 'offline: -5 % max HP';
+    case 13: return e.detail === 1 ? 'launcher unlocked (heat back to 0)' : 'launcher unlocked (speed lock over)';
+    case 14: return `both teams yellow #${e.detail}: -5 %`;
+    default: return EVENT_KINDS[e.kind] || `event ${e.kind}`;
+  }
+}
+
 function logEvent(e) {
-  const kind = EVENT_KINDS[e.kind] || `event ${e.kind}`;
-  let text = kind;
-  if (e.kind === 1) {
-    text = `armor ${e.detail & 0xf} hit${e.detail & 0x80 ? ' (board button)' : ''}`;
-    flashPlate(e.robot, e.detail & 0xf);
-  } else if (e.kind === 2) text = 'fired 17 mm';
-  else if (e.kind === 3) text = 'barrel overheat';
-  else if (e.kind === 4) text = 'chassis over power';
-  else if (e.kind === 5) text = `yellow card #${e.detail}`;
-  else if (e.kind === 6) text = 'red card';
-  else if (e.kind === 7) text = 'forfeits';
-  else if (e.kind === 8) text = 'killed by referee';
-  else if (e.kind === 9) text = 'revived';
-  if (e.kind === 2) return; // shots are frequent; heat gauge shows them
-  // Overheat/overpower deduct every 100 ms; fold a run into one line.
+  const kind = EVENT_KINDS[e.kind] || `event-${e.kind}`;
+  if (e.kind === 1) flashPlate(e.robot, e.detail & 0xf);
+  if (e.kind === 2) return; // shots are frequent; heat and projectile gauges show them
+  const text = eventText(e);
+  // Offline drain repeats every second; fold a run into one line.
   const last = state.lastLog;
-  if ((e.kind === 3 || e.kind === 4) && last && last.robot === e.robot && last.kind === e.kind
-      && last.li.isConnected && performance.now() - last.at < 300) {
+  if (e.kind === 12 && last && last.robot === e.robot && last.kind === e.kind && last.li.isConnected) {
     last.n++;
-    last.at = performance.now();
     last.li.children[1].lastChild.textContent = `${text} ×${last.n}`;
     last.li.children[2].textContent = `${e.hp} HP`;
   } else {
     const li = addLogLine(e.robot, `k-${kind}`, text, `${e.hp} HP`);
-    state.lastLog = { li, robot: e.robot, kind: e.kind, n: 1, at: performance.now() };
+    state.lastLog = { li, robot: e.robot, kind: e.kind, n: 1 };
   }
-  if (e.hp === 0 && [1, 3, 4].includes(e.kind)) addLogLine(e.robot, 'k-kill', 'destroyed');
-  teams[e.robot].el.classList.remove('flash');
-  void teams[e.robot].el.offsetWidth;
-  teams[e.robot].el.classList.add('flash');
+  if (e.hp === 0 && [1, 6, 8, 12].includes(e.kind)) addLogLine(e.robot, 'k-defeated', 'defeated');
+  if ([1, 5, 12, 14].includes(e.kind)) {
+    teams[e.robot].el.classList.remove('flash');
+    void teams[e.robot].el.offsetWidth;
+    teams[e.robot].el.classList.add('flash');
+  }
 }
 
 function logReal(cmd, d) {
   if (cmd === CMD.GAME_RESULT) {
-    addLogLine(null, 'k-revive', `match over: ${['draw', 'RED wins', 'BLUE wins'][d.winner] || '?'}`);
+    addLogLine(null, 'k-revive', `round over: ${['draw', 'RED wins', 'BLUE wins'][d.winner] || '?'}`);
   }
 }
 
@@ -1452,7 +1664,8 @@ function renderTeams(s) {
       t.hpValue.textContent = '---';
       t.hpMax.textContent = '';
       t.hpFill.style.width = t.hpGhost.style.width = '0%';
-      t.heatValue.textContent = t.bufferValue.textContent = t.powerValue.textContent = '';
+      t.heatValue.textContent = t.bufferValue.textContent = t.powerValue.textContent = t.ammoValue.textContent = '';
+      for (const c of [t.chipShooter, t.chipChassis, t.chipGimbal]) { c.textContent = ''; c.hidden = true; }
       t.heatFill.style.width = t.bufferFill.style.width = '0%';
       t.stateBadge.textContent = 'OFFLINE';
       t.stateBadge.className = 'badge state-badge';
@@ -1471,10 +1684,26 @@ function renderTeams(s) {
     t.bufferFill.style.width = `${pct(r.buffer, 60)}%`;
     t.bufferValue.textContent = `${r.buffer} J`;
     t.powerValue.textContent = `${r.power} / ${r.powerLimit} W`;
+    t.ammoValue.textContent = `${r.allowance} (${r.shots} fired)`;
     t.linkBadge.hidden = s.link !== i;
     const dead = !r.alive;
-    t.stateBadge.textContent = r.redCard ? 'RED CARD' : dead ? 'DESTROYED' : 'ONLINE';
-    t.stateBadge.className = `badge state-badge${dead ? ' dead' : ''}`;
+    t.stateBadge.textContent = r.redCard ? 'EJECTED' : dead ? 'DEFEATED' : r.disconnected ? 'OFFLINE' : 'ONLINE';
+    let shooter = ['on', 'Launcher on'];
+    if (!r.shooterOn) {
+      if (r.speedLocked) shooter = ['bad', r.speedLockS === 255 ? 'Launcher locked: speed (round)' : `Launcher locked: speed ${r.speedLockS} s`];
+      else if (r.heatLocked) shooter = ['bad', 'Launcher locked: heat'];
+      else if (r.allowance === 0 && r.alive) shooter = ['warn', 'No projectiles'];
+      else shooter = ['', 'Launcher off'];
+    }
+    const chassis = r.chassisOn ? ['on', 'Chassis on']
+      : r.chassisCutDs ? ['bad', `Chassis cut ${(r.chassisCutDs / 10).toFixed(1)} s`] : ['', 'Chassis off'];
+    const gimbal = r.disconnected ? ['bad', 'Disconnected'] : r.gimbalOn ? ['on', 'Gimbal on'] : ['', 'Gimbal off'];
+    for (const [chip, [cls, text]] of [[t.chipShooter, shooter], [t.chipChassis, chassis], [t.chipGimbal, gimbal]]) {
+      chip.hidden = false;
+      chip.className = `chip ${cls}`;
+      chip.textContent = text;
+    }
+    t.stateBadge.className = `badge state-badge${dead || r.disconnected ? ' dead' : ''}`;
     t.el.classList.toggle('dead', dead);
     const cards = [];
     for (let k = 0; k < Math.min(r.yellow, 8); k++) cards.push('<span class="card yellow"></span>');
@@ -1495,14 +1724,15 @@ function renderClock(s) {
     timeEl.className = 'time';
     sub.innerHTML = '&nbsp;';
     banner.hidden = true;
+    $('#resultWhy').hidden = true;
     return;
   }
   stageEl.textContent = s.paused ? `${STAGES[s.stage]} · paused` : STAGES[s.stage] || `Stage ${s.stage}`;
   stageEl.className = `stage${s.stage === 4 ? ' combat' : ''}${s.paused ? ' paused' : ''}`;
-  if (s.stage === 0 || s.stage === 1) timeEl.textContent = fmtTime(s.combatTime);
+  if (s.stage === 0) timeEl.textContent = fmtTime(s.combatTime);
   else if (s.stage === 5) timeEl.textContent = '0:00';
   else timeEl.textContent = fmtTime(s.remain);
-  timeEl.className = `time${s.stage === 2 || s.stage === 3 ? ' countdown' : ''}`;
+  timeEl.className = `time${s.stage >= 1 && s.stage <= 3 ? ' countdown' : ''}`;
   sub.textContent = `${GAME_TYPES[s.gameType] || `type ${s.gameType}`} · link ${TEAM_NAMES[s.link]}`;
   banner.hidden = s.stage !== 5;
   if (s.stage === 5) {
@@ -1510,6 +1740,9 @@ function renderClock(s) {
     banner.textContent = w === 1 ? 'RED WINS' : w === 2 ? 'BLUE WINS' : 'DRAW';
     banner.className = `result ${w === 1 ? 'red' : w === 2 ? 'blue' : 'draw'}`;
   }
+  const why = $('#resultWhy');
+  why.hidden = s.stage !== 5 || !WIN_REASONS[s.winReason];
+  why.textContent = WIN_REASONS[s.winReason] || '';
 }
 
 function renderControls(s) {
@@ -1518,32 +1751,39 @@ function renderControls(s) {
   const enable = {
     1: st === 0,
     2: st === 0 || st === 1,
-    3: st >= 2 && st <= 4 && !s?.paused,
+    3: st >= 1 && st <= 4 && !s?.paused,
     4: !!s?.paused,
     5: st >= 1 && st <= 4,
     6: true,
   };
   $$('[data-game]').forEach((b) => { b.disabled = !connected || !enable[b.dataset.game]; });
   const combat = st === 4 && !s?.paused;
+  $('#btnBothYellow').disabled = !connected;
   robots.forEach((ui, i) => {
-    const alive = s?.robots[i]?.alive;
-    ui.el.classList.toggle('disabled', !connected || !combat || !alive);
-    $('.act-shoot', ui.el).disabled = !connected || !combat || !alive;
+    const r = s?.robots[i];
+    ui.el.classList.toggle('disabled', !connected || !combat || !r?.alive || r?.disconnected);
+    $('.act-shoot', ui.el).disabled = !connected || !combat || !r?.shooterOn;
+    ui.disconnect.textContent = r?.disconnected ? 'Reconnect' : 'Disconnect';
     $$('button', ui.el).filter((b) => !b.classList.contains('act-shoot')).forEach((b) => { b.disabled = !connected; });
+    $$('.hit-kind input', ui.el).forEach((x) => { x.disabled = !connected; });
     $('.act-forfeit', ui.el).disabled = !connected || !(st >= 1 && st <= 4);
     ui.powerIn.disabled = !connected;
   });
   const form = $('#configForm');
   $$('input, select, button', form).forEach((x) => { x.disabled = !connected || st !== 0; });
   if (s && !configDirty && document.activeElement?.form !== form) {
+    const live = {
+      gameType: s.gameType, combatTime: s.combatTime, setupTime: s.setupTime, maxHp: s.robots[0].maxHp,
+      hitDmg: s.hitDmg, heatLimit: s.robots[0].heatLimit, cooling: s.cooling,
+      powerLimit: s.robots[0].powerLimit, speedLimit: s.speedLimit, allowance: null,
+    };
     form.gameType.value = String(s.gameType);
     form.link.value = String(s.link);
-    form.combatTime.value = s.combatTime;
-    form.maxHp.value = s.robots[0].maxHp;
-    form.heatLimit.value = s.robots[0].heatLimit;
-    form.cooling.value = s.cooling;
-    form.powerLimit.value = s.robots[0].powerLimit;
-    form.hitDmg.value = s.hitDmg;
+    for (const k of CONFIG_FIELDS) if (live[k] !== null) form[k].value = live[k];
+    if (st === 0) form.allowance.value = s.robots[0].allowance;
+    const match = Object.entries(PRESETS).find(([, p]) => CONFIG_FIELDS.every((k) => live[k] === null || p[k] === live[k])
+      && p.gameType === s.gameType);
+    presetSelect.value = match ? match[0] : 'custom';
   }
 }
 
@@ -1581,11 +1821,10 @@ function renderLinkView() {
     field(dl, '0x0201 outputs', `gimbal ${rs.gimbalOn ? 'on' : 'off'}, chassis ${rs.chassisOn ? 'on' : 'off'}, shooter ${rs.shooterOn ? 'on' : 'off'}`);
   }
   if (ph) {
-    field(dl, '0x0202 chassis_power', `${ph.power.toFixed(1)} W (${ph.current} mA)`);
     field(dl, '0x0202 buffer_energy', `${ph.buffer} J`);
-    field(dl, '0x0202 17mm barrel heat', `${ph.heat17_1}`);
+    field(dl, '0x0202 17mm barrel heat', `${ph.heat17}`);
   }
-  if (hp) field(dl, '0x0003 red_3 / blue_3', `${hp.red3} / ${hp.blue3}`);
+  if (hp) field(dl, '0x0003 ally_3 HP', `${hp.ally3}`);
   if (hurt) field(dl, '0x0206 last hurt', `armor ${hurt.armor}, ${HURT_REASONS[hurt.reason] || hurt.reason}`);
   if (shot) field(dl, '0x0207 last shot', `${shot.speed.toFixed(1)} m/s`);
   if (warn) field(dl, '0x0104 last warning', `level ${warn.level}, robot ${warn.offender}, count ${warn.count}`);
