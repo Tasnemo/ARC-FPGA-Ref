@@ -46,6 +46,33 @@ JavaScript with the same rules and the same byte stream.
 
 Safari and Firefox don't support Web Serial, so use Chrome or Edge, including on a Mac.
 
+## On a Mac
+
+Everything you do at a match works on a Mac: running the referee, the
+Chrome console, the board buttons, demo mode and the terminal client. The one
+thing a Mac can't do is **build** the FPGA design, because AMD makes Vivado
+for Windows and Linux only. That's a one-time job someone does on a PC; after
+that the Mac only needs a file on an SD card.
+
+1. **Get `BOOT.BIN`** from whoever built it on a PC (`build/sd/BOOT.BIN`). Rebuild
+   only when the hardware code (`hw/`, `sw/`) changes; console changes need no rebuild.
+2. **Make the SD card:** in Disk Utility, erase the microSD card as
+   **MS-DOS (FAT)**, then copy `BOOT.BIN` onto it in Finder.
+3. **Boot the Zybo:** insert the card, set jumper **JP5 to SD**, plug the
+   micro-USB cable (PROG/UART) into the Mac and power on.
+4. **Open the console:** double-click `web/arc-ref-console.html` and open it in
+   **Chrome** (not Safari). Click **Connect board**. The board shows up twice; pick the
+   **second** entry. If you get the wrong one, the page says "no referee data";
+   disconnect and pick the other. macOS already has the FTDI driver.
+5. **Optional terminal check:** `pip3 install pyserial`, then
+   `python3 tools/ref_cli.py --port /dev/cu.usbserial-XXXXXXB monitor`
+   (`ls /dev/cu.usbserial-*` lists the ports).
+
+No Xilinx tools, drivers or web server are needed on the Mac. If no one on the
+team has a PC: an Intel Mac can run Vivado inside a Windows or Linux virtual
+machine; Apple Silicon Macs can't run Vivado reliably, so use a lab or school
+PC once.
+
 ## Running it on the board
 
 ### 1. Get a `BOOT.BIN`
