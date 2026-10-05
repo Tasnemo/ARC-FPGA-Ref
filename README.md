@@ -5,23 +5,22 @@ former RoboMaster North America and uses the RoboMaster referee system),
 controlled from a web page in Chrome.
 
 ```
- Chrome / Edge (Windows or macOS)            Zybo Z7-10
-┌──────────────────────────────┐  USB  ┌─────────────────────────────────────────────┐
-│ web/  referee console        │◀─────▶│ PS UART1 ─ ARM bridge ─ AXI ─┐               │
-│  scoreboard, match control,  │ 115200│                              ▼   fabric      │
-│  hits / shots / penalties,   │  8N1  │   parser ▶ referee core ▶ frame generator    │
-│  robot link view, raw frames │       │   (stages, timer, HP, heat, power, CRCs)     │
-└──────────────────────────────┘       │   BTN0-3 armor hits · SW0 target · LD0-3     │
-                                       └─────────────────────────────────────────────┘
+ Chrome (Mac / Windows / Linux)                   Zybo Z7-10 (standalone build)
+┌──────────────────────────────┐  USB-serial ┌──────────────────────────────────────┐   UART    ┌──────────────┐
+│ web/arc-ref-console.html     │◀── Pmod JE ─▶│ parser ▶ referee core ▶ frame gen    │── JD1 ──▶ │ your robot's │
+│  scoreboard, match control,  │   115200     │ (1v1 / 3v3 rules, HP, heat, VP, CRCs)│  115200   │ control board│
+│  hits / penalties, link view │              │ BTN0-3 armor hits · SW · LEDs        │           │ (referee RX) │
+└──────────────────────────────┘              └──────────────────────────────────────┘           └──────────────┘
+          loaded once per power-up over the Zybo's own USB cable with openFPGALoader
 ```
 
 All referee logic runs in the FPGA fabric and follows the **ARCC 2026 rules**
 (Events Manual V1.6), in either **1v1** (one Infantry per side) or **3v3** (Hero,
-Infantry and Sentry per side, with Victory Points, capture point, respawn and gold). The board sends **real referee frames** in the
-2026 protocol layouts (`0x0001` game status, `0x0201` robot status, `0x0202`
-buffer/heat, `0x0206` hurt, and others), so a robot's existing referee
-parser should work against it. Later you could route the same byte stream out a Pmod UART to a
-robot. The ARM core only copies bytes between USB and the fabric.
+Infantry and Sentry per side, with Victory Points, capture point, respawn and gold).
+The board sends **real referee frames** in the RoboMaster 2026 protocol V1.3.0
+layouts to the browser and, over a UART pin, **to a robot**, exactly as the real
+referee's power-management module does, so a robot's referee parser works
+against it unchanged.
 
 See [docs/protocol.md](docs/protocol.md) for the frame formats, control
 commands, rules model and register map.
@@ -30,8 +29,10 @@ commands, rules model and register map.
 
 | Path | Contents |
 |---|---|
-| `hw/rtl/` | Verilog: parser, referee core, frame generator, FIFO, inputs, AXI wrapper |
-| `hw/sim/` | Icarus testbench (drives the AXI bus like the ARM does) |
+| `hw/rtl/` | Verilog: parser, referee core, frame generator, FIFOs, UARTs, inputs, AXI wrapper, standalone top |
+| `hw/sim/` | Icarus testbenches: the SD-card build over AXI, the standalone build over its UART pins |
+| `hw/scripts/build_standalone.tcl` | Vivado build of the standalone bitstream into `prebuilt/` |
+| `prebuilt/`, `load_board.sh`, `load_board.bat` | the bitstream anyone can load with openFPGALoader |
 | `hw/scripts/build.tcl`, `hw/constraints/` | Vivado project, block design and pins for the Zybo Z7-10 |
 | `sw/ref_bridge/main.c` | bare-metal UART ⇄ fabric bridge |
 | `sw/scripts/` | build the app and `BOOT.BIN` (xsct), program over JTAG |
@@ -46,36 +47,74 @@ JavaScript with the same rules and the same byte stream.
 
 Safari and Firefox don't support Web Serial, so use Chrome or Edge, including on a Mac.
 
-## On a Mac
+## Run it on a real board (Mac, Windows or Linux, no SD card, no Vivado)
 
-Everything you do at a match works on a Mac: running the referee, the
-Chrome console, the board buttons, demo mode and the terminal client. The one
-thing a Mac can't do is **build** the FPGA design, because AMD makes Vivado
-for Windows and Linux only. That's a one-time job someone does on a PC; after
-that the Mac only needs a file on an SD card.
+**You need:** a Zybo Z7-10 with its micro-USB cable, Chrome, and a **3.3 V USB-serial
+adapter** for the browser link: Digilent's **PmodUSBUART** plugs straight into Pmod
+**JE** (top row); any CP2102 / CH340 / FT232 adapter works with three jumper wires.
+(The Zybo's own USB-serial port is wired to the ARM side, which this build doesn't use.)
 
-1. **Get `BOOT.BIN`** from whoever built it on a PC (`build/sd/BOOT.BIN`). Rebuild
-   only when the hardware code (`hw/`, `sw/`) changes; console changes need no rebuild.
-2. **Make the SD card:** in Disk Utility, erase the microSD card as
-   **MS-DOS (FAT)**, then copy `BOOT.BIN` onto it in Finder.
-3. **Boot the Zybo:** insert the card, set jumper **JP5 to SD**, plug the
-   micro-USB cable (PROG/UART) into the Mac and power on.
-4. **Open the console:** double-click `web/arc-ref-console.html` and open it in
-   **Chrome** (not Safari). Click **Connect board**. The board shows up twice; pick the
-   **second** entry. If you get the wrong one, the page says "no referee data";
-   disconnect and pick the other. macOS already has the FTDI driver.
-5. **Optional terminal check:** `pip3 install pyserial`, then
-   `python3 tools/ref_cli.py --port /dev/cu.usbserial-XXXXXXB monitor`
-   (`ls /dev/cu.usbserial-*` lists the ports).
+1. **Install openFPGALoader once.**
+   - macOS: `brew install openfpgaloader`
+   - Windows: install [MSYS2](https://www.msys2.org), then in its UCRT64 shell
+     `pacman -S mingw-w64-ucrt-x86_64-openFPGALoader`, and add `C:\msys64\ucrt64\bin` to PATH
+   - Linux: `sudo apt install openfpgaloader` (or build it)
+2. **Set jumper JP5 to JTAG**, plug the Zybo's micro-USB (PROG/UART) in and power on.
+3. **Load the referee:** `./load_board.sh` (Mac/Linux) or `load_board.bat` (Windows).
+   It takes a few seconds. The FPGA forgets it at power-off; just run it again.
+4. **Plug in the USB-serial adapter** on JE:
 
-No Xilinx tools, drivers or web server are needed on the Mac. If no one on the
-team has a PC: an Intel Mac can run Vivado inside a Windows or Linux virtual
-machine; Apple Silicon Macs can't run Vivado reliably, so use a lab or school
-PC once.
+   | Adapter pin | Zybo Pmod JE |
+   |---|---|
+   | RX (adapter receives) | JE2 (FPGA TX) |
+   | TX (adapter sends) | JE3 (FPGA RX) |
+   | GND | JE5 |
+   | 3.3 V / 5 V | **leave unconnected** |
 
-## Running it on the board
+   A PmodUSBUART just plugs into JE's top row.
+5. **Open `web/arc-ref-console.html` in Chrome** (not Safari), click **Connect board**
+   and pick the adapter. If the page says "no referee data", flip **SW3**: it swaps
+   JE2 and JE3, for adapters labelled the other way round.
 
-### 1. Get a `BOOT.BIN`
+**Windows driver note:** openFPGALoader talks to the Zybo's JTAG through libusb. If it
+reports that no cable is found, run [Zadig](https://zadig.akeo.ie), choose the Zybo's
+*Interface 0*, and install **WinUSB** for it. (Vivado won't see that cable until you
+reinstall Digilent's driver.) This hasn't been tried on real hardware yet.
+
+`prebuilt/arc_ref_zybo_z7_10.bit` is what `load_board` loads. **Someone with Vivado
+builds it once** (`vivado -mode batch -source hw/scripts/build_standalone.tcl`) and
+commits it; after that nobody else needs Vivado. Rebuild only after changes under
+`hw/rtl/`; console changes never need a rebuild.
+
+## Connecting a robot
+
+On a real robot, the referee's power-management module streams the referee frames
+to the robot's control board over its **User** serial port at **115200 8N1** (protocol
+V1.3.0, table 1-1). The board does the same on Pmod **JD**:
+
+| Zybo Pmod JD | Robot control board (referee UART) |
+|---|---|
+| JD1 (FPGA TX) | RX |
+| JD2 (FPGA RX) | TX (reserved for robot → referee data) |
+| JD5 (GND) | GND |
+
+- The robot gets exactly what it would get from the real referee for the **link robot**
+  (choose it in **Rules config**): game status, its HP and limits, buffer and heat,
+  ally HP, hurt and shoot events, allowance and gold, buffs, RFID, warnings. Console-only
+  frames are never sent to the robot.
+- It's **3.3 V logic**. DJI's A and C boards use 3.3 V UARTs; if your board's referee port
+  is 5 V, use a level shifter.
+- Both builds (standalone and SD card) have this port. One robot at a time for now; in
+  3v3 pick which robot is linked.
+
+## Alternative: SD-card build (no extra adapter)
+
+This uses the Zybo's own USB-serial port through the ARM processor, so it needs no
+USB-serial adapter, but someone has to make `BOOT.BIN` with Vivado and Vitis and
+each board needs an SD card.
+
+
+### 1. Make `BOOT.BIN` (needs Vivado + Vitis)
 
 Vivado runs on Windows and Linux only. **On a Mac you can't build the
 bitstream**: get `BOOT.BIN` from a teammate who built it on a PC, then go to
@@ -121,7 +160,7 @@ Only one program can hold the port at a time. Close PuTTY, `screen`, the
 Vitis serial terminal and similar before connecting. The picker only shows
 FTDI devices. **Other port…** shows everything, if you use a different USB-UART.
 
-### 4. Run a match
+## Running a match
 
 1. Pick **1v1** or **3v3** in match control (only before a match). That loads the
    ARCC 2026 stats for every robot. **Rules config** lets you change times, the
@@ -151,8 +190,11 @@ The terminal client works on both OSes too:
 `make test` needs only `iverilog`, Python 3 and Node 18+, with no Xilinx tools.
 It:
 
-1. simulates the RTL end to end (`hw/sim/tb_arc_ref.v`: two 1v1 and two 3v3 rounds),
-2. decodes and checks every byte the board would send (`tools/check_sim.py`, 58 checks),
+1. simulates the SD-card build end to end over AXI (`hw/sim/tb_arc_ref.v`: two 1v1 and
+   two 3v3 rounds) and checks every byte sent to the browser and to the robot
+   (`tools/check_sim.py`, 66 checks),
+2. simulates the standalone build through its UART pins only, including the SW3 swap
+   and the robot link (`hw/sim/tb_standalone.v`, `tools/check_standalone.py`),
 3. checks `web/js/protocol.js` against that output, and replays all four rounds
    through the JS emulator, which must end exactly like the RTL,
 4. checks that `web/arc-ref-console.html` is up to date.
@@ -165,19 +207,15 @@ the commands from the Makefile directly if you don't have `make`.
 
 ## Not done yet / to verify
 
-- **A few rules aren't modelled**, such as the pilot screen blackout after a
-  yellow card and the 2 s RFID expiry on the capture point. `docs/protocol.md`
-  lists everything covered and not covered.
-- **Check that it fits the Z7-10 in Vivado.** A full open-source synthesis
-  (yosys `synth_xilinx`) puts the fabric at about 12,500 LUTs (71 % of the
-  Z7-10), 5,000 flip-flops (14 %) and 14 of 80 DSPs. Vivado usually maps
-  tighter, but the PS block design adds some AXI glue; `build/utilization.txt`
-  from `build_all` has the real numbers.
-- **Protocol checked against V1.3.0.** Every real frame matches the official
-  document field by field. The one open question is in the document itself:
-  `0x0208` is listed as 6 bytes, but its struct is 8 bytes; we send 8.
-- **Not yet built in Vivado here.** The RTL passes simulation and a yosys
-  synthesis check, but the block-design script, PS settings and the SD/JTAG
-  flows haven't been run on real hardware yet.
-- **Pmods aren't used yet.** The natural next step is routing the frame stream
-  to a Pmod UART for a real robot, and armor inputs from Pmod pins.
+- **Nothing has run on a real Zybo yet.** Everything that can be checked without one
+  passes: both builds in simulation, the protocol against V1.3.0, the console in Chrome,
+  and a full yosys synthesis (about 69–71 % of the Z7-10's LUTs). The first Vivado build
+  and the first openFPGALoader load are the next steps; send the log if either fails.
+- **The PmodUSBUART pin direction is from Digilent's docs.** If it's the other way
+  round, SW3 fixes it without a rebuild.
+- **One robot link.** The robot port carries the link robot's view. Six separate
+  robot ports for a full 3v3 would be the next step.
+- **A few rules aren't modelled**, such as the pilot screen blackout after a yellow
+  card and the 2 s RFID expiry on the capture point. `docs/protocol.md` lists them.
+- **`0x0208` length:** the V1.3.0 document lists it as 6 bytes but its struct is 8;
+  we send 8.
