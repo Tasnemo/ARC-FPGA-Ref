@@ -59,12 +59,12 @@ if {$board ne ""} {
         -config {make_external "FIXED_IO, DDR" apply_board_preset "0" Master "Disable" Slave "Disable"} $ps
 }
 
-# USB-UART (UART1 on MIO 48/49), one AXI master port, 100 MHz fabric clock.
+# USB-UART (UART1 on MIO 48/49), one AXI master port, 50 MHz fabric clock.
 set_property -dict [list \
     CONFIG.PCW_USE_M_AXI_GP0 {1} \
     CONFIG.PCW_EN_CLK0_PORT {1} \
     CONFIG.PCW_EN_RST0_PORT {1} \
-    CONFIG.PCW_FPGA0_PERIPHERAL_FREQMHZ {100} \
+    CONFIG.PCW_FPGA0_PERIPHERAL_FREQMHZ {50} \
     CONFIG.PCW_UART1_PERIPHERAL_ENABLE {1} \
     CONFIG.PCW_UART1_UART1_IO {MIO 48 .. 49} \
     CONFIG.PCW_UART_PERIPHERAL_FREQMHZ {100} \
@@ -72,15 +72,21 @@ set_property -dict [list \
 ] $ps
 
 set ref [create_bd_cell -type module -reference arc_ref_axi arc_ref_0]
+set_property CONFIG.CLK_HZ 50000000 $ref
 
 apply_bd_automation -rule xilinx.com:bd_rule:axi4 -config [list \
-    Clk_master {/ps7/FCLK_CLK0 (100 MHz)} Clk_slave {Auto} Clk_xbar {Auto} \
+    Clk_master {/ps7/FCLK_CLK0 (50 MHz)} Clk_slave {Auto} Clk_xbar {Auto} \
     Master {/ps7/M_AXI_GP0} Slave {/arc_ref_0/s_axi} \
     ddr_seg {Auto} intc_ip {New AXI Interconnect} master_apm {0}] \
     [get_bd_intf_pins arc_ref_0/s_axi]
 
 foreach {name dir} {btn I sw I led O} {
     create_bd_port -dir $dir -from 3 -to 0 $name
+    connect_bd_net [get_bd_ports $name] [get_bd_pins arc_ref_0/$name]
+}
+# Robot link (UART to the robot's control board) on Pmod JD
+foreach {name dir} {robot_tx O robot_rx I} {
+    create_bd_port -dir $dir $name
     connect_bd_net [get_bd_ports $name] [get_bd_pins arc_ref_0/$name]
 }
 

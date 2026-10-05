@@ -21,6 +21,10 @@ set_property -dict { PACKAGE_PIN M15 IOSTANDARD LVCMOS33 } [get_ports { led[1] }
 set_property -dict { PACKAGE_PIN G14 IOSTANDARD LVCMOS33 } [get_ports { led[2] }]
 set_property -dict { PACKAGE_PIN D18 IOSTANDARD LVCMOS33 } [get_ports { led[3] }]
 
-## Buttons and switches go through a 2-FF synchroniser; LEDs are slow.
-set_false_path -from [get_ports {btn[*] sw[*]}]
-set_false_path -to   [get_ports {led[*]}]
+## Robot link on Pmod JD: JD1 TX to the robot, JD2 RX from the robot, JD5 GND
+set_property -dict { PACKAGE_PIN T14 IOSTANDARD LVCMOS33 } [get_ports { robot_tx }]
+set_property -dict { PACKAGE_PIN T15 IOSTANDARD LVCMOS33 PULLUP true } [get_ports { robot_rx }]
+
+## Buttons and switches go through a 2-FF synchroniser; LEDs and UARTs are slow.
+set_false_path -from [get_ports {btn[*] sw[*] robot_rx}]
+set_false_path -to   [get_ports {led[*] robot_tx}]
