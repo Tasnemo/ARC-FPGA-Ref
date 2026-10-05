@@ -16,13 +16,15 @@ export class SerialLink {
     return 'serial' in navigator;
   }
 
-  // allPorts=false shows only FTDI devices (the Zybo's FT2232H), which hides
-  // Bluetooth and modem ports on macOS. allPorts=true is for other bridges.
+  // allPorts=false shows only USB-serial chips: FTDI (the Zybo's FT2232H and
+  // Digilent's PmodUSBUART), Silicon Labs CP210x, WCH CH340 and Prolific.
+  // That hides Bluetooth and modem ports on macOS. allPorts=true shows all.
   async open({ allPorts = false } = {}) {
-    this.port = await navigator.serial.requestPort(allPorts ? {} : { filters: [{ usbVendorId: 0x0403 }] });
+    const vendors = [0x0403, 0x10c4, 0x1a86, 0x067b];
+    this.port = await navigator.serial.requestPort(allPorts ? {} : { filters: vendors.map((v) => ({ usbVendorId: v })) });
     await this.port.open({ baudRate: 115200, dataBits: 8, stopBits: 1, parity: 'none', bufferSize: 65536 });
     const info = this.port.getInfo();
-    if (info.usbVendorId === 0x0403) this.label = 'Zybo (FTDI USB-UART)';
+    this.label = info.usbVendorId === 0x0403 ? 'Referee board (FTDI USB-UART)' : 'Referee board (USB-UART)';
     this.writer = this.port.writable.getWriter();
     this.readLoop();
   }

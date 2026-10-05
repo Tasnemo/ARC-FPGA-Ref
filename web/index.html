@@ -33,6 +33,8 @@
   <div id="portHint" class="banner warn" hidden>
     <strong>Connected, but no referee data yet.</strong>
     <ul>
+      <li><strong>Standalone build</strong> (loaded with <code>load_board</code>): connect to the USB-serial adapter on Pmod JE,
+        not the Zybo's own USB port. Still nothing? Flip <strong>SW3</strong> (swaps TX and RX on JE).</li>
       <li><strong>Mac:</strong> the Zybo shows up as two ports (e.g. <code>…usbserial-210279A</code> and <code>…B</code>, or two
         "Digilent Adept USB Device" entries). The UART is usually the <strong>second</strong> one. Disconnect and pick the other.</li>
       <li><strong>Windows:</strong> pick the COM port for "USB Serial Port". If none appears, install the FTDI VCP driver (see README).</li>

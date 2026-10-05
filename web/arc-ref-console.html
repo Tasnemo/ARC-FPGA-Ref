@@ -333,6 +333,8 @@ input[type="range"] { padding: 0; accent-color: var(--c, var(--blue)); }
   <div id="portHint" class="banner warn" hidden>
     <strong>Connected, but no referee data yet.</strong>
     <ul>
+      <li><strong>Standalone build</strong> (loaded with <code>load_board</code>): connect to the USB-serial adapter on Pmod JE,
+        not the Zybo's own USB port. Still nothing? Flip <strong>SW3</strong> (swaps TX and RX on JE).</li>
       <li><strong>Mac:</strong> the Zybo shows up as two ports (e.g. <code>…usbserial-210279A</code> and <code>…B</code>, or two
         "Digilent Adept USB Device" entries). The UART is usually the <strong>second</strong> one. Disconnect and pick the other.</li>
       <li><strong>Windows:</strong> pick the COM port for "USB Serial Port". If none appears, install the FTDI VCP driver (see README).</li>
@@ -973,13 +975,15 @@ class SerialLink {
     return 'serial' in navigator;
   }
 
-  // allPorts=false shows only FTDI devices (the Zybo's FT2232H), which hides
-  // Bluetooth and modem ports on macOS. allPorts=true is for other bridges.
+  // allPorts=false shows only USB-serial chips: FTDI (the Zybo's FT2232H and
+  // Digilent's PmodUSBUART), Silicon Labs CP210x, WCH CH340 and Prolific.
+  // That hides Bluetooth and modem ports on macOS. allPorts=true shows all.
   async open({ allPorts = false } = {}) {
-    this.port = await navigator.serial.requestPort(allPorts ? {} : { filters: [{ usbVendorId: 0x0403 }] });
+    const vendors = [0x0403, 0x10c4, 0x1a86, 0x067b];
+    this.port = await navigator.serial.requestPort(allPorts ? {} : { filters: vendors.map((v) => ({ usbVendorId: v })) });
     await this.port.open({ baudRate: 115200, dataBits: 8, stopBits: 1, parity: 'none', bufferSize: 65536 });
     const info = this.port.getInfo();
-    if (info.usbVendorId === 0x0403) this.label = 'Zybo (FTDI USB-UART)';
+    this.label = info.usbVendorId === 0x0403 ? 'Referee board (FTDI USB-UART)' : 'Referee board (USB-UART)';
     this.writer = this.port.writable.getWriter();
     this.readLoop();
   }
