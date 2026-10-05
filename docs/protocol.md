@@ -17,11 +17,17 @@ use `0xF0xx`/`0xF1xx`, which the real protocol does not use.
 ## Link
 
 - 115200 baud, 8N1, no flow control (the power management module's User port rate in V1.3.0, table 1-1)
-- Path: Chrome Web Serial ⇄ Zybo USB-UART (FTDI) ⇄ PS UART1 ⇄ ARM bridge ⇄
-  AXI-Lite ⇄ fabric. The ARM only copies bytes. All parsing, CRCs and rules
-  run in the fabric.
-- The bridge prints a plain-text banner at boot. It contains no `0xA5`, so
-  decoders skip it, and the console shows it under "Raw frames".
+- **Browser link**, two builds:
+  - *Standalone* (fabric only, loaded with openFPGALoader): Chrome Web Serial ⇄
+    USB-serial adapter on Pmod JE (FPGA TX on JE2, RX on JE3, SW3 swaps them) ⇄ fabric UART.
+  - *SD card*: Chrome Web Serial ⇄ Zybo USB-UART (FTDI) ⇄ PS UART1 ⇄ ARM bridge ⇄
+    AXI-Lite ⇄ fabric. The ARM only copies bytes, and prints a plain-text banner at
+    boot (no `0xA5`, so decoders skip it).
+- **Robot link** (both builds): Pmod JD1 = FPGA TX to the robot's referee UART RX,
+  JD2 = robot TX (reserved), JD5 = GND; 3.3 V logic. It carries the real frames below
+  for the link robot, byte for byte as on the browser link, and none of the `0xF1xx`
+  console frames.
+- All parsing, CRCs and rules run in the fabric.
 
 ## Frame
 
