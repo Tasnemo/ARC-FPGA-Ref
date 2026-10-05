@@ -1,5 +1,5 @@
 ## Zybo Z7-10 (xc7z010clg400-1). Pins from the Digilent Zybo-Z7 master XDC.
-## The clock comes from the PS (FCLK_CLK0, 100 MHz), so no sysclk pin here.
+## The clock comes from the PS (FCLK_CLK0, 50 MHz), so no sysclk pin here.
 ## The USB-UART is on PS MIO 48/49 and is configured in the block design.
 
 ## Buttons: BTN0..3 = armor plate 0..3
