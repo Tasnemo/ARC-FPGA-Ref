@@ -87,7 +87,9 @@ module arc_frame_gen (
 
     output reg          fifo_wr,
     output reg  [7:0]   fifo_din,
-    input  wire [10:0]  fifo_free
+    output reg          fifo_real,   // this byte belongs to a real referee frame
+    input  wire [10:0]  fifo_free,
+    input  wire [10:0]  robot_free   // room in the robot-link FIFO
 );
     `include "arc_crc.vh"
 
@@ -219,6 +221,7 @@ module arc_frame_gen (
     reg [15:0]    cmd;
     reg [PLW-1:0] pl;
     reg           srv;      // sending 0xF101 (streamed, not captured)
+    reg           real_f;   // sending a real frame (also goes to the robot)
     reg [7:0]     pidx;     // payload byte index
     reg [7:0]     crc8;
     reg [15:0]    crc16;
@@ -246,14 +249,15 @@ module arc_frame_gen (
         if (rst) begin
             pend <= {NP{1'b0}};
             c50 <= 6'd0; c5 <= 3'd0; c17 <= 5'd0;
-            busy <= 1'b0; seq <= 8'd0;
+            busy <= 1'b0; seq <= 8'd0; fifo_real <= 1'b0; real_f <= 1'b0;
             ev_wp <= 4'd0; ev_rp <= 4'd0; ev_n <= 5'd0;
             hurt_l <= 8'd0; shot_freq_l <= 8'd0; shot_speed_l <= 32'd0; shot_type_l <= 8'd1;
             warn_lvl_l <= 8'd0; warn_id_l <= 8'd0; warn_cnt_l <= 8'd0;
         end else begin
             if (busy) begin
-                fifo_wr  <= 1'b1;
-                fifo_din <= cur_byte;
+                fifo_wr   <= 1'b1;
+                fifo_din  <= cur_byte;
+                fifo_real <= real_f;
                 if (b < 8'd4)        crc8  <= crc8_byte(crc8, cur_byte);
                 if (b < 8'd7 + plen) crc16 <= crc16_byte(crc16, cur_byte);
                 if (b >= 8'd7 && b < 8'd7 + plen) begin
@@ -265,13 +269,14 @@ module arc_frame_gen (
                     seq  <= seq + 8'd1;
                 end
                 b <= b + 8'd1;
-            end else if (pick != {NP{1'b0}} && fifo_free >= SRV_LEN + 12) begin
+            end else if (pick != {NP{1'b0}} && fifo_free >= SRV_LEN + 12 && robot_free >= 11'd32) begin
                 busy  <= 1'b1;
                 b     <= 8'd0;
                 crc8  <= 8'hFF;
                 crc16 <= 16'hFFFF;
                 pidx  <= 8'd0;
                 srv   <= pick[P_SRV];
+                real_f <= !(pick[P_SRV] || pick[P_EV]);
                 clr   = pick;
                 case (1'b1)
                     pick[P_HURT]:   begin cmd <= 16'h0206; plen <= 8'd1;  pl <= pl_0206; end

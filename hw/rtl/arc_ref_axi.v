@@ -14,8 +14,9 @@
 //   0x1C INPUTS   RO  [3:0] buttons, [7:4] switches (debounced)
 module arc_ref_axi #(
     parameter integer C_S_AXI_ADDR_WIDTH = 6,
-    parameter integer CLK_HZ             = 100_000_000,
-    parameter integer DEBOUNCE_MS        = 10
+    parameter integer CLK_HZ             = 50_000_000,
+    parameter integer DEBOUNCE_MS        = 10,
+    parameter integer ROBOT_BAUD         = 115_200
 ) (
     (* X_INTERFACE_PARAMETER = "ASSOCIATED_BUSIF s_axi, ASSOCIATED_RESET s_axi_aresetn" *)
     input  wire                          s_axi_aclk,
@@ -42,7 +43,9 @@ module arc_ref_axi #(
 
     input  wire [3:0]                    btn,
     input  wire [3:0]                    sw,
-    output wire [3:0]                    led
+    output wire [3:0]                    led,
+    output wire                          robot_tx,
+    input  wire                          robot_rx
 );
     wire clk = s_axi_aclk;
 
@@ -88,12 +91,14 @@ module arc_ref_axi #(
     wire [7:0]  inputs_level;
     wire        tx_rd;
 
-    arc_ref_top #(.CLK_HZ(CLK_HZ), .DEBOUNCE_MS(DEBOUNCE_MS), .FIFO_AW(10)) u_top (
+    arc_ref_top #(.CLK_HZ(CLK_HZ), .DEBOUNCE_MS(DEBOUNCE_MS), .FIFO_AW(10),
+                  .ROBOT_BAUD(ROBOT_BAUD)) u_top (
         .clk(clk), .rst(core_rst),
         .rx_valid(rx_valid), .rx_byte(rx_byte),
         .tx_rd(tx_rd), .tx_byte(tx_byte), .tx_empty(tx_empty), .tx_count(tx_count),
         .rx_ok(rx_ok), .rx_err(rx_err),
-        .btn(btn), .sw(sw), .led(led), .inputs_level(inputs_level)
+        .btn(btn), .sw(sw), .led(led), .inputs_level(inputs_level),
+        .robot_tx(robot_tx), .robot_rx(robot_rx)
     );
 
     // ----------------------------------------------------------------- read

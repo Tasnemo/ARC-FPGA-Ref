@@ -8,10 +8,15 @@
 //   LED0    : combat running (blinks while paused)
 //   LED1/2  : a red / blue robot is alive
 //   LED3    : flashes on each accepted control frame
+//
+// robot_tx carries only the real referee frames (no 0xF1xx console frames)
+// at 115200 8N1, like the referee power-management module's User port, so a
+// robot's control board can be wired straight to it.
 module arc_ref_top #(
     parameter integer CLK_HZ      = 100_000_000,
     parameter integer DEBOUNCE_MS = 10,
-    parameter integer FIFO_AW     = 10
+    parameter integer FIFO_AW     = 10,
+    parameter integer ROBOT_BAUD  = 115_200
 ) (
     input  wire        clk,
     input  wire        rst,
@@ -30,7 +35,10 @@ module arc_ref_top #(
     input  wire [3:0]  btn,
     input  wire [3:0]  sw,
     output wire [3:0]  led,
-    output wire [7:0]  inputs_level
+    output wire [7:0]  inputs_level,
+
+    output wire        robot_tx,     // to the robot's referee UART RX
+    input  wire        robot_rx      // from the robot (reserved for 0x0301)
 );
     wire [3:0] btn_press, btn_level, sw_level;
     assign inputs_level = {sw_level, btn_level};
@@ -166,7 +174,8 @@ module arc_ref_top #(
         .stage_valid(stage_valid)
     );
 
-    wire       fifo_wr;
+    wire       fifo_wr, fifo_real;
+    wire [10:0] robot_free;
     wire [7:0] fifo_din;
     wire       fifo_full;
     wire [FIFO_AW:0] fifo_count;
@@ -228,7 +237,24 @@ module arc_ref_top #(
         .result_valid(result_valid),
         .stage_valid(stage_valid),
         .rx_ok(rx_ok), .rx_err(rx_err),
-        .fifo_wr(fifo_wr), .fifo_din(fifo_din), .fifo_free(fifo_free)
+        .fifo_wr(fifo_wr), .fifo_din(fifo_din), .fifo_real(fifo_real),
+        .fifo_free(fifo_free), .robot_free(robot_free)
+    );
+
+    // ------------------------------------------------------- robot link
+    wire       rb_empty, rb_full, rb_ready;
+    wire [7:0] rb_byte;
+    wire [9:0] rb_count;
+    assign robot_free = 11'd512 - {1'b0, rb_count};
+    arc_byte_fifo #(.AW(9)) u_robot_fifo (
+        .clk(clk), .rst(rst),
+        .wr(fifo_wr && fifo_real), .din(fifo_din),
+        .rd(rb_ready && !rb_empty), .dout(rb_byte), .empty(rb_empty), .full(rb_full),
+        .count(rb_count)
+    );
+    arc_uart_tx #(.CLK_HZ(CLK_HZ), .BAUD(ROBOT_BAUD)) u_robot_tx (
+        .clk(clk), .rst(rst), .valid(!rb_empty), .data(rb_byte), .ready(rb_ready),
+        .txd(robot_tx)
     );
 
     arc_byte_fifo #(.AW(FIFO_AW)) u_fifo (

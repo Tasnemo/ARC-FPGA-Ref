@@ -188,5 +188,19 @@ check(f4["winner"] == 2 and f4["win_reason"] == "forfeit" and f4["teams"][0]["vp
       "3v3 forfeit: red VP 0, blue wins")
 check(f4["rx_ok"] == 82 and f4["rx_err"] == 1, f"rx counters 82 ok / 1 bad ({f4['rx_ok']}/{f4['rx_err']})")
 
+# ------------------------------------------------------------- robot link
+print("robot UART link")
+rpath = path.parent / "robot_bytes.hex"
+rdata = bytes(int(line, 16) for line in rpath.read_text().split()) if rpath.exists() else b""
+rdec = arcref.Decoder()
+rframes = rdec.feed(rdata)
+real = [(c, s, p) for c, s, p in frames if c < 0xF000]
+check(rframes and rdec.bad == 0, f"robot UART carries {len(rframes)} frames, all passing CRC")
+check(not any(c >= 0xF000 for c, _, _ in rframes), "robot UART carries no console (0xF1xx) frames")
+check(rframes == real[:len(rframes)] and len(rframes) >= len(real) - 5,
+      "robot UART carries every real referee frame, in order and byte for byte")
+check({0x0001, 0x0003, 0x0201, 0x0202, 0x0206, 0x0207, 0x0208} <= {c for c, _, _ in rframes},
+      "robot sees game status, ally HP, robot status, heat, hurt, shoot and allowance frames")
+
 print("PASS" if not fails else f"{len(fails)} FAILED")
 sys.exit(1 if fails else 0)

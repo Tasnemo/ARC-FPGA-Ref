@@ -22,14 +22,26 @@ module tb_arc_ref;
     reg  [3:0]  btn = 0, sw = 0;
     wire [3:0]  led;
 
-    arc_ref_axi #(.CLK_HZ(CLK_HZ), .DEBOUNCE_MS(1)) dut (
+    // Robot link at CLK_HZ/3 baud so the slowed-down clock can carry it.
+    localparam integer ROBOT_BAUD = CLK_HZ / 3;
+    wire robot_tx;
+    wire       rob_valid;
+    wire [7:0] rob_byte;
+    integer    rfd;
+    arc_uart_rx #(.CLK_HZ(CLK_HZ), .BAUD(ROBOT_BAUD)) robot_rx_tap (
+        .clk(clk), .rst(!rstn), .rxd(robot_tx), .valid(rob_valid), .data(rob_byte)
+    );
+    always @(posedge clk) if (rob_valid) $fwrite(rfd, "%02x\n", rob_byte);
+
+    arc_ref_axi #(.CLK_HZ(CLK_HZ), .DEBOUNCE_MS(1), .ROBOT_BAUD(ROBOT_BAUD)) dut (
         .s_axi_aclk(clk), .s_axi_aresetn(rstn),
         .s_axi_awaddr(awaddr), .s_axi_awprot(3'd0), .s_axi_awvalid(awvalid), .s_axi_awready(awready),
         .s_axi_wdata(wdata), .s_axi_wstrb(4'hF), .s_axi_wvalid(wvalid), .s_axi_wready(wready),
         .s_axi_bresp(bresp), .s_axi_bvalid(bvalid), .s_axi_bready(bready),
         .s_axi_araddr(araddr), .s_axi_arprot(3'd0), .s_axi_arvalid(arvalid), .s_axi_arready(arready),
         .s_axi_rdata(rdata), .s_axi_rresp(rresp), .s_axi_rvalid(rvalid), .s_axi_rready(rready),
-        .btn(btn), .sw(sw), .led(led)
+        .btn(btn), .sw(sw), .led(led),
+        .robot_tx(robot_tx), .robot_rx(1'b1)
     );
 
     integer fd;
@@ -146,6 +158,7 @@ module tb_arc_ref;
     reg [7:0] slot0, slot1, slot2;
     initial begin
         fd = $fopen("out/tx_bytes.hex", "w");
+        rfd = $fopen("out/robot_bytes.hex", "w");
         repeat (20) @(posedge clk);
         rstn = 1;
         repeat (5) @(posedge clk);
@@ -243,6 +256,7 @@ module tb_arc_ref;
         axi_read(6'h18, v);
         $display("rx ok=%0d err=%0d", v[15:0], v[31:16]);
         $fclose(fd);
+        $fclose(rfd);
         $display("DONE");
         $finish;
     end
