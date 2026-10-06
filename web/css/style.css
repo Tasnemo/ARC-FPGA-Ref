@@ -276,6 +276,12 @@ input[type="range"] { padding: 0; accent-color: var(--c, var(--blue)); }
 .rates th { text-align: left; color: var(--muted); font-weight: 500; border-bottom: 1px solid var(--line); padding: 3px 4px; }
 .rates td { padding: 2px 4px; }
 .rates td:nth-child(n+3), .rates th:nth-child(n+3) { text-align: right; }
+.lower .wireless { grid-column: 1 / -1; }
+.robots-table td.good { color: var(--ok); }
+.robots-table td.fair { color: var(--warn); }
+.robots-table td.bad { color: var(--danger); }
+.robots-table tr.gone td { color: var(--muted); }
+.wireless { overflow-x: auto; }
 
 .check { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); }
 .raw-log, .board-text {

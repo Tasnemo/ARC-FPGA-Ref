@@ -15,7 +15,7 @@ import sys
 
 WEB = pathlib.Path(__file__).resolve().parent.parent / "web"
 OUT = WEB / "arc-ref-console.html"
-MODULES = ["protocol.js", "serial.js", "sim.js", "app.js"]   # dependency order
+MODULES = ["protocol.js", "serial.js", "ws.js", "sim.js", "app.js"]   # dependency order
 
 IMPORT_RE = re.compile(r"^import\s[\s\S]*?\sfrom\s+'[^']+';\s*$", re.M)
 EXPORT_RE = re.compile(r"^export\s+", re.M)

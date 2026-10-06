@@ -12,13 +12,14 @@
       <span class="brand-mark" aria-hidden="true"></span>
       <div>
         <h1>ARC Referee System</h1>
-        <p class="sub">FPGA referee &middot; Zybo Z7-10</p>
+        <p class="sub" id="boardSub">FPGA referee &middot; Zybo Z7-10 / Kria KR260</p>
       </div>
     </div>
     <div class="link">
       <span id="linkPill" class="pill off">No link</span>
       <span id="linkStats" class="link-stats"></span>
       <button id="btnConnect" class="btn primary">Connect board</button>
+      <button id="btnWifi" class="btn" title="Connect to a Kria KR260 over WiFi or Ethernet (arc-refd)">Kria (WiFi)</button>
       <button id="btnOtherPort" class="btn small" title="Show every serial port, not just the Zybo's FTDI chip">Other port…</button>
       <button id="btnDemo" class="btn">Demo mode</button>
       <button id="btnDisconnect" class="btn" hidden>Disconnect</button>
@@ -26,8 +27,8 @@
   </header>
 
   <p id="serialWarning" class="banner warn" hidden>
-    This browser has no Web Serial. Use Chrome or Edge on desktop, and open the page from
-    <code>http://localhost</code> or the single-file <code>arc-ref-console.html</code> (see README). Demo mode still works.
+    This browser has no Web Serial, so it can't reach a Zybo over USB. Use Chrome or Edge on desktop for that.
+    A Kria KR260 over WiFi and Demo mode work in any browser.
   </p>
 
   <div id="portHint" class="banner warn" hidden>
@@ -128,6 +129,21 @@
         </div>
         <pre id="rawLog" class="raw-log"></pre>
         <pre id="boardText" class="board-text" hidden></pre>
+      </div>
+
+      <div id="wirelessPanel" class="panel wireless" hidden>
+        <div class="panel-head">
+          <h2>Wireless link</h2>
+          <span id="wirelessSummary" class="hint"></span>
+        </div>
+        <p class="hint">Measured live by the board: it pings every robot 10 times a second. RTT is the
+          round trip board &rarr; robot ESP32 &rarr; board; one way is about half.</p>
+        <table class="rates robots-table">
+          <thead><tr><th>Robot</th><th>IP</th><th>RTT p50</th><th>p99</th><th>max</th><th>loss</th><th>frames</th><th>drops</th><th>seen</th></tr></thead>
+          <tbody id="robotRows"></tbody>
+        </table>
+        <p id="wirelessEmpty" class="hint">No robots yet. Power an ESP32 running <code>esp32/robot_link</code>; it joins the
+          board's <code>ARC-REF</code> WiFi and appears here within a second.</p>
       </div>
     </section>
   </main>

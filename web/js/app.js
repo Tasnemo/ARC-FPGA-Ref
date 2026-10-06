@@ -5,6 +5,7 @@ import {
 } from './protocol.js';
 import { SerialLink } from './serial.js';
 import { SimLink } from './sim.js';
+import { DEFAULT_BOARD, WsLink } from './ws.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -33,6 +34,8 @@ const state = {
   layout: null,
   lastLog: null,
   configDirty: false,
+  wireless: null,      // latest arc-refd status (Kria only)
+  servedByBoard: false,
 };
 
 const modeOf = (s) => (s ? (s.mode3 ? '3v3' : '1v1') : state.uiMode);
@@ -260,12 +263,24 @@ $('#btnPauseRaw').addEventListener('click', (e) => {
 });
 
 // ------------------------------------------------------------ transport
+// Kria address: the host that served this page, ?board=host[:port], or the
+// KR260 hotspot's default address.
+const boardHost = () => (state.servedByBoard ? location.host
+  : new URLSearchParams(location.search).get('board') || DEFAULT_BOARD);
+
+function wifiLink() {
+  const link = new WsLink(boardHost());
+  link.onStatus = (st) => { state.wireless = st; };
+  return link;
+}
+
 if (!SerialLink.supported()) {
   $('#serialWarning').hidden = false;
   $('#btnConnect').disabled = true;
 }
 
-$('#btnConnect').addEventListener('click', () => connect(new SerialLink()));
+$('#btnConnect').addEventListener('click', () => connect(state.servedByBoard ? wifiLink() : new SerialLink()));
+$('#btnWifi').addEventListener('click', () => connect(wifiLink()));
 $('#btnOtherPort').addEventListener('click', () => connect(new SerialLink(), { allPorts: true }));
 $('#btnDemo').addEventListener('click', () => connect(new SimLink()));
 $('#btnDisconnect').addEventListener('click', () => state.link?.close());
@@ -273,6 +288,7 @@ $('#btnDisconnect').addEventListener('click', () => state.link?.close());
 async function connect(link, openOpts) {
   await state.link?.close();
   Object.assign(state, {
+    wireless: null,
     decoder: new FrameDecoder(), server: null, serverAt: 0, real: {}, counts: {}, rates: {},
     lastCounts: {}, rxBytes: 0, txBytes: 0, rawLines: [], boardText: '', configDirty: false,
   });
@@ -286,6 +302,11 @@ async function connect(link, openOpts) {
     await link.open(openOpts);
   } catch (err) {
     if (err.name === 'NotFoundError') return;   // picker cancelled
+    if (err.name === 'BoardUnreachable') {
+      alert(`${err.message}.\n\nJoin the board's "ARC-REF" WiFi (or plug in Ethernet), then try again. `
+        + 'If the board has another address, open this page with ?board=ADDRESS.');
+      return;
+    }
     alert(err.name === 'NetworkError' || err.name === 'InvalidStateError'
       ? 'That port is busy. Close any serial terminal (PuTTY, screen, Vitis/Vivado serial console) using it and try again.'
       : `Could not open the port: ${err.message}`);
@@ -310,7 +331,9 @@ function send([cmd, payload]) {
 
 function setLinkUi(link, reason) {
   $('#btnConnect').hidden = !!link;
-  $('#btnOtherPort').hidden = !!link || !SerialLink.supported();
+  $('#btnWifi').hidden = !!link || state.servedByBoard;
+  $('#btnOtherPort').hidden = !!link || !SerialLink.supported() || state.servedByBoard;
+  $('#wirelessPanel').hidden = !(link instanceof WsLink);
   $('#btnDemo').hidden = !!link;
   $('#btnDisconnect').hidden = !link;
   $('#portHint').hidden = true;
@@ -705,9 +728,43 @@ function renderLinkStats() {
     pill.className = `pill ${stale ? 'stale' : 'on'}`;
     pill.textContent = stale ? `${state.link.label} · no data` : state.link.label;
   }
+  const rtt = state.link instanceof WsLink ? state.link.consoleRtt() : null;
   $('#linkStats').textContent = state.link
     ? `rx ${state.rxBytes} B · tx ${state.txBytes} B · bad ${state.decoder?.bad ?? 0}${s ? ` · board ok ${s.rxOk} / err ${s.rxErr}` : ''}`
+      + (rtt ? ` · console RTT ${rtt.p50.toFixed(1)} ms` : '')
     : '';
+}
+
+// Colour thresholds for RTT: under 10 ms is well inside the 50 Hz frame
+// period; over 30 ms a robot would notice.
+const rttClass = (ms) => (ms == null ? '' : ms < 10 ? 'good' : ms < 30 ? 'fair' : 'bad');
+const fmtMs = (ms) => (ms == null ? '–' : ms < 10 ? ms.toFixed(1) : String(Math.round(ms)));
+
+function renderWireless() {
+  if (!(state.link instanceof WsLink)) return;
+  const w = state.wireless;
+  const robots = w?.robots || [];
+  $('#wirelessSummary').textContent = w
+    ? `${robots.length} robot${robots.length === 1 ? '' : 's'} · pump ${w.pumpPeriodMs} ms (max gap ${w.pumpMaxGapMs} ms) · ${w.rt}`
+      + ` · ${w.browsers} browser${w.browsers === 1 ? '' : 's'}${w.backend === 'fake' ? ' · FAKE BACKEND' : ''}`
+    : 'waiting for the board…';
+  $('#wirelessEmpty').hidden = robots.length > 0;
+  $('#robotRows').replaceChildren(...robots.map((r) => {
+    const tr = document.createElement('tr');
+    if (r.ageMs > 1000) tr.className = 'gone';
+    const cells = [
+      [r.name], [r.ip], [fmtMs(r.rttP50), rttClass(r.rttP50)], [fmtMs(r.rttP99), rttClass(r.rttP99)],
+      [fmtMs(r.rttMax), rttClass(r.rttMax)], [`${r.loss} %`, r.loss < 1 ? 'good' : r.loss < 5 ? 'fair' : 'bad'],
+      [String(r.txFrames)], [String(r.txDrops), r.txDrops ? 'fair' : ''], [`${r.ageMs} ms`, r.ageMs > 1000 ? 'bad' : ''],
+    ];
+    for (const [text, cls] of cells) {
+      const td = document.createElement('td');
+      td.textContent = text;
+      if (cls) td.className = cls;
+      tr.append(td);
+    }
+    return tr;
+  }));
 }
 
 function render() {
@@ -717,8 +774,21 @@ function render() {
   renderControls(s);
   renderLinkView();
   renderLinkStats();
+  renderWireless();
   if (!state.rawPaused) $('#rawLog').textContent = state.rawLines.slice(-80).join('\n');
 }
+
+// Served by arc-refd on a Kria: connect straight away over WiFi.
+WsLink.servedByBoard().then((yes) => {
+  if (!yes) return;
+  state.servedByBoard = true;
+  $('#serialWarning').hidden = true;
+  $('#btnConnect').disabled = false;
+  $('#btnConnect').textContent = 'Connect board';
+  $('#boardSub').textContent = 'FPGA referee \u00b7 Kria KR260 over WiFi';
+  setLinkUi(null);
+  connect(wifiLink());
+});
 
 buildTeams(state.uiMode);
 fillStatsTable(modeRobots('1v1'));
