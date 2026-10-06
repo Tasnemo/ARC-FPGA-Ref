@@ -1,0 +1,58 @@
+// Device-tree overlay loaded by `xmutil loadapp arc-ref` on Kria Ubuntu.
+// It programs arc-ref.bit.bin into the PL, enables the 50 MHz PL clock and
+// describes the referee core (arc_ref_axi) at 0xA000_0000 on M_AXI_HPM0_FPD.
+//
+// Compile with:  dtc -@ -O dtb -o arc-ref.dtbo arc-ref.dtsi
+/dts-v1/;
+/plugin/;
+
+/ {
+	fragment@0 {
+		target = <&fpga_full>;
+		__overlay__ {
+			#address-cells = <2>;
+			#size-cells = <2>;
+			firmware-name = "arc-ref.bit.bin";
+			pid = <0x0>;
+			resets = <&zynqmp_reset 116>, <&zynqmp_reset 117>,
+			         <&zynqmp_reset 118>, <&zynqmp_reset 119>;
+			uid = <0x0>;
+		};
+	};
+
+	fragment@1 {
+		target = <&amba>;
+		__overlay__ {
+			#address-cells = <2>;
+			#size-cells = <2>;
+
+			// PL0_REF (zynqmp_clk 71) at 50 MHz, matching build_kr260.tcl
+			clocking0: clocking0 {
+				#clock-cells = <0>;
+				assigned-clock-rates = <50000000>;
+				assigned-clocks = <&zynqmp_clk 71>;
+				clock-output-names = "fabric_clk";
+				clocks = <&zynqmp_clk 71>;
+				compatible = "xlnx,fclk";
+			};
+
+			// HPM0_FPD/HPM1_FPD widths left at 128 bit, as in the Kria
+			// base designs; the AXI interconnect converts to AXI4-Lite.
+			afi0: afi0 {
+				compatible = "xlnx,afi-fpga";
+				config-afi = <0 0>, <1 0>, <2 0>, <3 0>, <4 0>, <5 0>,
+				             <6 0>, <7 0>, <8 0>, <9 0>, <10 0>, <11 0>,
+				             <12 0>, <13 0>, <14 0xa00>, <15 0x000>;
+			};
+
+			// Referee core. arc_refd opens it through /dev/uioN when the
+			// generic-uio driver binds, otherwise through /dev/mem.
+			arc_ref: arc_ref@a0000000 {
+				compatible = "tasnemo,arc-ref-1.0", "generic-uio";
+				reg = <0x0 0xa0000000 0x0 0x10000>;
+				clocks = <&clocking0>;
+				status = "okay";
+			};
+		};
+	};
+};
