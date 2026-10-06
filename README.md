@@ -22,6 +22,13 @@ layouts to the browser and, over a UART pin, **to a robot**, exactly as the real
 referee's power-management module does, so a robot's referee parser works
 against it unchanged.
 
+It runs on two boards with the same referee logic:
+
+- **Zybo Z7-10:** wired. Chrome talks to it over USB serial, and the robot is on a wire.
+- **Kria KR260:** wireless. The board runs its own WiFi hotspot, the console works in
+  any browser, and each robot gets its referee frames through a small ESP32 receiver.
+  See [Kria KR260: wireless](#kria-kr260-wireless).
+
 See [docs/protocol.md](docs/protocol.md) for the frame formats, control
 commands, rules model and register map.
 
@@ -38,6 +45,9 @@ commands, rules model and register map.
 | `sw/scripts/` | build the app and `BOOT.BIN` (xsct), program over JTAG |
 | `web/` | the console. `arc-ref-console.html` is the single-file build |
 | `tools/` | Python protocol library, sim checker, terminal client, bundler |
+| `hw/scripts/build_kr260.tcl`, `hw/constraints/kr260.xdc` | Vivado build of the KR260 design into `prebuilt/kr260/` |
+| `kria/` | KR260 daemon `arc_refd.py`, its test, `install.sh`, device-tree overlay |
+| `esp32/robot_link/` | ESP32 receiver that sits on each robot (WiFi to referee UART) |
 
 ## Quick start: try the console with no board
 
@@ -106,6 +116,102 @@ V1.3.0, table 1-1). The board does the same on Pmod **JD**:
   is 5 V, use a level shifter.
 - Both builds (standalone and SD card) have this port. One robot at a time for now; in
   3v3 pick which robot is linked.
+
+## Kria KR260: wireless
+
+```
+ any browser (laptop, tablet, phone)            Kria KR260                                   on each robot
+┌───────────────────────────┐   WiFi   ┌────────────────────────────────────────┐   WiFi   ┌────────┐ UART  ┌────────────┐
+│ http://10.42.0.1/         │◀────────▶│ Ubuntu: arc-refd ◀AXI▶ PL referee core │◀────────▶│ ESP32  │──────▶│ robot      │
+│ console + wireless panel  │ "ARC-REF"│  (USB WiFi adapter = hotspot)          │  UDP     │ robot_ │115200 │ controller │
+└───────────────────────────┘          └────────────────────────────────────────┘          │ link   │       │ (referee   │
+                                         PMOD 1 also has a wired robot UART              └────────┘       │  port)     │
+                                                                                                          └────────────┘
+```
+
+This mirrors the real referee system: the KR260 is the referee server at the side
+of the field, the ESP32 bolted to the robot is the referee module, and the robot's
+controller gets the same frames on the same 115200-baud serial line it would in a match.
+
+**No board has WiFi built in**, the KR260 included, so you need:
+
+| Part | Notes |
+|---|---|
+| Kria KR260 + its SD card with AMD's **Ubuntu 22.04** image | as shipped; follow AMD's KR260 getting-started guide once |
+| **USB WiFi adapter that supports AP mode** on Linux | e.g. one with a MediaTek MT7612U or MT7610U chip (in-kernel `mt76` driver) |
+| **One ESP32 per robot** | any ESP32 DevKit (about $5); ESP32-S3 and C3 also work with other pins |
+
+### Set up the board (once)
+
+On the KR260 (keyboard and screen, or SSH over Ethernet):
+
+```bash
+git clone https://github.com/Tasnemo/ARC-FPGA-Ref && cd ARC-FPGA-Ref
+sudo ./kria/install.sh
+```
+
+That installs the PL design for `xmutil`, creates the **ARC-REF** hotspot (2.4 GHz,
+password `arcref2026`, change it with `ARC_WIFI_PASSWORD=...`), and starts the
+`arc-refd` service at every boot. It needs `prebuilt/kr260/arc-ref.bit.bin`, which
+someone with Vivado builds once with `make bitstream-kr260` and commits.
+
+### Run a match
+
+1. Join the **ARC-REF** WiFi on the laptop (Mac, Windows, Linux, or even a phone) and
+   open **http://10.42.0.1/**. The console connects by itself, in any browser, because it
+   doesn't need Web Serial. The single-file `arc-ref-console.html` works too: click
+   **Kria (WiFi)**.
+2. For each robot, open `esp32/robot_link/robot_link.ino` in the Arduino IDE (with the
+   esp32 boards package), set `ROBOT_NAME`, and upload it to an ESP32. Wire it up:
+
+   | ESP32 | Robot referee port |
+   |---|---|
+   | GPIO17 (TX) | RX |
+   | GPIO16 (RX) | TX |
+   | GND | GND |
+
+3. The robot appears in the **Wireless link** panel within a second, with its live
+   round-trip time.
+
+More than one browser can connect at once, for example a scoreboard on a second
+screen. Every robot receives the link robot's view, as on the Zybo.
+
+### Real time
+
+The rules, the match clock and the frame timing all run in the FPGA fabric, exactly
+as on the Zybo. Linux and WiFi only carry bytes, and every step is built to add as
+little delay as possible and never build up a backlog:
+
+| Step | Delay | How |
+|---|---|---|
+| PL referee core | ns | hardware; frames scheduled at the protocol's rates |
+| PL → arc-refd | ≤ 1 ms | the pump thread polls the PL every 1 ms with `SCHED_FIFO` priority and locked memory |
+| arc-refd → WiFi | < 1 ms | each batch is sent in the same pass, in the WiFi **voice** queue (WMM AC_VO); a full socket drops the datagram rather than queueing it |
+| WiFi air time | typically 1–5 ms | power saving off on both ends, 2.4 GHz channel of your choice |
+| ESP32 → robot UART | immediate | each datagram is written to the UART the moment it arrives |
+
+Measured in the test (`make kria-test`, on a PC, no real-time priority): the daemon adds
+**0.6 ms median, 1.5 ms p99** between a byte leaving the PL FIFO and the robot's datagram.
+The WiFi figures are typical values, not measurements on this setup. The console
+measures the real ones: the board pings every robot 10 times a second and shows
+**RTT p50 / p99 / max and loss per robot**, coloured green under 10 ms. For scale, one 23-byte
+0x0202 frame takes 2.0 ms just to cross the robot's 115200-baud wire, the same as with the official module.
+
+Tips for a busy venue: pick the quietest 2.4 GHz channel (`ARC_WIFI_CHANNEL=1`, `6` or
+`11`), keep the board's adapter in line of sight of the field, and watch the p99
+column. If WiFi isn't good enough, PMOD 1 (pin 8 TX, pin 9 RX, pin 11 GND, 3.3 V)
+carries the same robot stream on a wire.
+
+### Try it without a board
+
+```bash
+make sim                                         # records the RTL's byte stream
+python3 kria/arc_refd.py --backend fake --port 8080
+```
+
+Then open http://localhost:8080/. The fake backend replays the simulated board in
+real time, and any ESP32 on the same network can point `BOARD_IP_OVERRIDE` at your
+computer.
 
 ## Alternative: SD-card build (no extra adapter)
 
@@ -197,7 +303,10 @@ It:
    and the robot link (`hw/sim/tb_standalone.v`, `tools/check_standalone.py`),
 3. checks `web/js/protocol.js` against that output, and replays all four rounds
    through the JS emulator, which must end exactly like the RTL,
-4. checks that `web/arc-ref-console.html` is up to date.
+4. checks that `web/arc-ref-console.html` is up to date,
+5. runs the KR260 daemon against the simulated stream (`kria/test_arc_refd.py`): the
+   browser must get the board stream byte for byte, the robot must get exactly what the
+   RTL's own robot UART sent, and the added latency must stay under 5 ms p99.
 
 After editing anything in `web/`, run `make bundle` (or `python3 tools/bundle_web.py`) and commit the regenerated file.
 
@@ -213,6 +322,11 @@ the commands from the Makefile directly if you don't have `make`.
   and the first openFPGALoader load are the next steps; send the log if either fails.
 - **The PmodUSBUART pin direction is from Digilent's docs.** If it's the other way
   round, SW3 fixes it without a rebuild.
+- **Nothing has run on a real KR260 yet either.** The KR260 pins come from AMD's own
+  KR260 designs, the overlay compiles, the daemon and the console are tested against the
+  simulated board, and the ESP32 sketch compiles (arduino-esp32 3.0.7). The parts only
+  hardware can confirm are the overlay's reset and AXI port settings, which are copied
+  from AMD's Kria examples, your WiFi adapter's AP mode, and the real WiFi latency.
 - **One robot link.** The robot port carries the link robot's view. Six separate
   robot ports for a full 3v3 would be the next step.
 - **A few rules aren't modelled**, such as the pilot screen blackout after a yellow

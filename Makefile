@@ -4,7 +4,7 @@ IVERILOG ?= iverilog
 VVP      ?= vvp
 RTL      := $(wildcard hw/rtl/*.v)
 
-.PHONY: all sim sim-standalone test bundle serve bitstream bitstream-standalone firmware program load clean
+.PHONY: all sim sim-standalone kria-test test bundle serve kria-fake bitstream bitstream-standalone bitstream-kr260 firmware program load clean
 
 all: test
 
@@ -26,8 +26,12 @@ sim-standalone: hw/sim/out/sa.vvp
 	cd hw/sim && $(VVP) -n out/sa.vvp
 	python3 tools/check_standalone.py
 
+# KR260 daemon against the simulated board stream (browser, robot, latency).
+kria-test: sim
+	python3 kria/test_arc_refd.py
+
 # Simulation, then the browser protocol code and emulator against its output.
-test: sim sim-standalone
+test: sim sim-standalone kria-test
 	node web/test/protocol.test.mjs
 	python3 tools/bundle_web.py --check
 
@@ -39,11 +43,18 @@ bundle:
 serve:
 	python3 -m http.server 8000 --directory web
 
+# The KR260 daemon replaying the simulated board: http://localhost:8080/
+kria-fake: sim
+	python3 kria/arc_refd.py --backend fake --port 8080
+
 bitstream:
 	vivado -mode batch -nojournal -nolog -source hw/scripts/build.tcl
 
 bitstream-standalone:
 	vivado -mode batch -nojournal -nolog -source hw/scripts/build_standalone.tcl
+
+bitstream-kr260:
+	vivado -mode batch -nojournal -nolog -source hw/scripts/build_kr260.tcl
 
 load:
 	./load_board.sh

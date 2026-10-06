@@ -12,3 +12,13 @@ They are produced on a PC with Vivado by
 `vivado -mode batch -source hw/scripts/build_standalone.tcl` (add
 `-tclargs z7-20` for the Z7-20). Rebuild and commit after any change under
 `hw/rtl/`. Changes to the web console never need a rebuild.
+
+## Kria KR260
+
+| File | Board |
+|---|---|
+| `kr260/arc-ref.bit.bin` | Kria KR260, loaded by `xmutil loadapp arc-ref` |
+
+Built by `make bitstream-kr260` (`hw/scripts/build_kr260.tcl`, Vivado 2022.2 or
+later with the Kria board files). `kria/install.sh` copies it to the board with
+the overlay in `kria/firmware/`. Rebuild and commit after any change under `hw/rtl/`.

@@ -205,3 +205,26 @@ disconnection, and the "temporarily activated" state.
 | `0x14` | CTRL: bit 0 soft reset |
 | `0x18` | control frames ok (bits 15–0) / bad (bits 31–16) |
 | `0x1C` | debounced buttons (bits 3–0) and switches (bits 7–4) |
+
+## Kria KR260 wireless link
+
+On the KR260, `kria/arc_refd.py` carries the same byte streams over the network:
+
+- **Browsers** connect to `ws://<board>/ws`. Binary messages are the board's byte
+  stream cut into whole frames (real and console frames, as on USB serial); binary
+  messages from the browser are control frames, written whole to the PL. Text
+  messages are JSON: `hello`, a `status` report twice a second (per-robot RTT,
+  loss, frames, drops, pump timing), and `ping`/`pong` for the console's own RTT.
+- **Robots** (`esp32/robot_link`) talk UDP to port 7400. The first byte of each
+  datagram is its type:
+
+| Type | Direction | Payload |
+|---|---|---|
+| `0x00` REF | board → robot | whole real referee frames (never 0xF1xx), ≤ 1400 bytes |
+| `0x00` REF | robot → board | bytes from the robot's UART (0x0301 etc.), shown in the console |
+| `0x01` PING | board → robot | u32 sequence, u64 board time (ns), 10 Hz |
+| `0x02` PONG | robot → board | the PING payload, echoed at once |
+| `0x03` HELLO | robot → board | robot name (UTF-8), every 500 ms; peers expire after 2 s |
+
+Board-to-robot datagrams are sent with TOS 0xE0 (WMM voice). The robot stream is
+identical to the PL's wired robot UART, which `kria/test_arc_refd.py` checks.
